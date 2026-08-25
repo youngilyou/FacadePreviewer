@@ -1,0 +1,26 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# === C# / .NET build output ===
+**/bin/
+**/obj/
+**/*_wpftmp.csproj
+.vs/
+**/build/
+**/*.log
+tools/ExtraModule/
+tools/Module/
+tools/libffmpeg/
+tools/cygwin_rsync/
+tools/colmap_deps/*
+!tools/colmap_deps/README.md
+*.vsidx
+*.suo
+
+# === Claude Code local session config (not meant to be shared) ===
+.claude/

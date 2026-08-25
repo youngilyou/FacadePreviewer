@@ -1,0 +1,37 @@
+// [YYIL] 2026-08-12: field 2 renamed frame_id -> chunk_id to match the authoritative copy
+// (Z:\DDS_Platform\DDS-Router\thirdparty\Messages\fixed_idl\map2stitch_msgs\msg\
+// VideoTsPacket.idl, itself copied from RobotMediaServer's ZLMediaKit/3rdpart/idl copy) --
+// this previewer copy had drifted stale since the upstream rename on 2026-07-31. The mismatch
+// wasn't just cosmetic: it produced a genuinely different Fast-DDS TypeObject on each side of
+// a cross-machine RtmpVideoBridge<->FacadeDdsBridge test, which is the likely root cause of a
+// real bug found that session -- a Windows DataReader logged a successful match against the
+// Linux DataWriter, but the DataWriter's own on_publication_matched never fired in return, and
+// zero samples ever arrived despite confirmed-working raw UDP connectivity in both directions.
+// Keep this file byte-for-byte identical to the fixed_idl copy going forward.
+module map2stitch_msgs {
+  module msg {
+
+    // Independent, self-contained MPEG-TS packet bundle (188 * N bytes, N=4 by default -- see
+    // PublisherDefaults.ChunkSize in PublishImageAndSensorTest/src/Program.cs) for real-time video
+    // streaming. Deliberately NOT chunked/reassembled like MediaFrameChunk: each sample here is
+    // already a complete, independently-decodable unit (whole TS packets, no partial packet split
+    // across samples), so a lost sample just means one dropped TS packet upstream of the decoder --
+    // not a ruined multi-chunk frame. BEST_EFFORT only, same as MediaFrameChunk (see
+    // Map2stitchXrceClient.cpp's best_effort_datawriter_xml comment for why RELIABLE is never used
+    // for image/video data in this project) -- there is no separate "reliable" variant of this type.
+    struct VideoTsPacket {
+      string stream_id;              // camera/video stream id, e.g. "front_camera"
+      uint32 chunk_id;                // per-bundle counter (renamed from frame_id 2026-07-31
+                                      // upstream: publishers with no H.264/PES-level parsing have
+                                      // no concept of real frame/access-unit boundaries -- this is
+                                      // purely informational/for correlating with encoder logs, NOT
+                                      // used for reassembly)
+      uint64 sequence_id;            // monotonically increasing per-stream bundle counter --
+                                      // loss/reorder detection only, never used for reassembly
+      double timestamp_sec;          // capture/mux timestamp
+
+      sequence<uint8> data;          // one or more whole 188-byte TS packets, never a partial packet
+    };
+
+  };
+};

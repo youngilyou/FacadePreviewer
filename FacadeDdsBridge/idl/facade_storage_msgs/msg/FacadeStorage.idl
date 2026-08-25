@@ -1,0 +1,95 @@
+module facade_storage_msgs {
+  module msg {
+
+    // Operator-visibility layer on top of CrackVisionArchiveManager's already-automatic
+    // zip-on-completion trigger (see MngData backend_core/src/crackvision_archive_manager.cpp --
+    // the archive build itself still fires automatically once every required direction for a
+    // (company, building) has arrived; nothing here changes that trigger). These 3 messages
+    // exist purely so FacadePreviewer can show the operator progress/cancel/completion instead
+    // of the process happening silently server-side. Deliberately NOT a "Goal" message/full
+    // ROS2-Action-style request -- there is no separate start trigger to model, the archive
+    // build's own start condition (building_requirements + all directions received) is already
+    // the goal. Correlation key is (company, building), NOT session_id -- one archive can be the
+    // union of several sessions (one per direction), see facade_archives.sql.
+    //
+    // Independent of facade_image_msgs::msg::FacadeImageMeta/FacadeImageAck -- separate topics,
+    // separate purpose (that pair moves per-image metadata; this trio moves per-building
+    // archive-job status), same non-coupling rule as facade_image_msgs itself.
+
+    // MngData -> FacadePreviewer. Published periodically by the archive worker thread while it
+    // is zipping a (company, building) archive (see build_and_cleanup()'s per-file loop). Loss
+    // of one update is harmless -- the next one supersedes it -- so this is the one BEST_EFFORT
+    // topic in this trio (matches the project-wide convention: discrete commands/results are
+    // RELIABLE, progress-only feedback is BEST_EFFORT).
+    struct FacadeStorageFeedback {
+      string company;
+      string building;
+      unsigned long images_zipped;
+      unsigned long images_total;
+      string status;                  // "ZIPPING" for now -- room to add phases later
+      long long updated_at_epoch_ms;
+    };
+
+    // MngData -> FacadePreviewer. Published exactly once when a (company, building) archive job
+    // finishes, however it finishes (success, failure, or operator cancellation). RELIABLE --
+    // this is the one message the operator's completion popup depends on, it must not be lost.
+    struct FacadeStorageResult {
+      string company;
+      string building;
+      boolean success;
+      boolean cancelled;               // true if this result is because of a CancelRequest
+      long long archive_id;            // 0 if no crackvision_archives row was created
+      string zip_path;
+      unsigned long long size_bytes;
+      unsigned long image_count;
+      string error_message;            // empty when success == TRUE
+      long long completed_at_epoch_ms;
+    };
+
+    // FacadePreviewer -> MngData. Operator-requested cancellation of an in-progress (or still
+    // queued) archive build for (company, building). RELIABLE. The archive worker thread checks
+    // for this between each file it adds to the zip (see build_and_cleanup()) -- cancelling
+    // never leaves a half-written zip recorded in crackvision_archives or any original file
+    // deleted, same "only commit on confirmed success" discipline as the normal path.
+    struct FacadeStorageCancelRequest {
+      string company;
+      string building;
+      long long requested_at_epoch_ms;
+    };
+
+    // FacadePreviewer -> MngData. Declares (or re-declares -- additive, see
+    // CrackVisionArchiveManager::set_building_requirements) the set of directions expected for a
+    // (company, building) before/during transfer, so the server knows when it has "everything" and
+    // can auto-archive. RELIABLE -- a lost declaration would mean the archive silently never
+    // triggers, with no error surfaced anywhere.
+    //
+    // [YYIL] 2026-08-21: previously carried over HTTP (POST api/crackvision/building-requirements,
+    // requiring a login first) -- moved to plain DDS, matching this project's project-wide
+    // convention that inter-service state/metadata/command traffic is DDS-based (backend_core's
+    // HTTP API is for the remote_viewer_DB admin/viewer app, not this operational path; backend_core
+    // itself and its DDS participant are always running regardless of whether anything HTTP-side
+    // is even up). The REST endpoint itself is left in place for manual/admin use, just no longer
+    // called by FacadePreviewer.
+    //
+    // [YYIL] 2026-08-21 (later same day): required_counts added, parallel array to
+    // required_directions (same index = same direction). Without this, CrackVisionArchiveManager's
+    // completion check could only ask "has each required direction appeared at all yet" -- for a
+    // batch transfer that sends directions one at a time, sequentially, the moment the LAST
+    // direction's very first image lands in the database, every required direction is technically
+    // "represented" and the archive fires immediately, scooping up whatever exists at that exact
+    // instant -- silently omitting every file still in flight for that (or any other still-
+    // uploading) direction. Confirmed via a real test: only 63 of 169 real photos made it into an
+    // archive that reported success. required_counts lets the completion check compare actual vs.
+    // expected image count per direction instead of just presence, so it waits for every declared
+    // file, not just the first one per direction. FacadePreviewer computes this by counting files
+    // in the local folder it is about to send for each direction, before the transfer starts.
+    struct FacadeStorageRequirements {
+      string company;
+      string building;
+      sequence<string> required_directions;
+      sequence<unsigned long> required_counts;
+      long long requested_at_epoch_ms;
+    };
+
+  };
+};

@@ -1,0 +1,20 @@
+# previewer's own stitch engine (Kornia LoFTR + RANSAC + COLMAP fallback).
+# Self-contained: does not import anything from the main CheckCrack repo.
+# Install with the same Python this project's other tools use (miniconda3
+# base env observed on the dev machine; a venv works too).
+#
+# pycolmap (not a native colmap.exe vendored build) since 2026-08-22 -- see
+# CLAUDE.local.md's dated entry for that reversal. Version pinned to match
+# the main CheckCrack repo's own requirements.txt exactly.
+
+torch>=2.1
+kornia>=0.7
+opencv-python>=4.8
+numpy>=1.24
+pandas>=2.0
+pyyaml>=6.0
+scipy>=1.10
+networkx>=3.0
+pillow>=10.0
+pycolmap==4.1.1
+pyproj==3.7.2

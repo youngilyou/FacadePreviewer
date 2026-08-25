@@ -1,0 +1,43 @@
+# previewer's own stitch pipeline config.
+#
+# Not a copy of config/pipeline.yaml or config/pipeline.dev_test.yaml from
+# the main CheckCrack repo -- tuned separately because previewer's job is
+# different (find unphotographed spots on the building, not precision
+# crack measurement) and its images arrive pre-downscaled to 640x640
+# during capture (see previewer/CLAUDE.local.md's capture-only redesign),
+# which is already smaller than loftr.max_image_side below.
+#
+# Sections not needed by previewer's trimmed src/pipeline/runner.py
+# (facade_segmentation, facade_assignment, tiling, crack, measurement) are
+# intentionally omitted -- run_facade_poc doesn't read them.
+
+matching:
+  temporal_neighbor_count: 4
+  max_gps_distance_m: 20
+  max_view_angle_delta_deg: 20
+
+loftr:
+  pretrained: outdoor
+  min_confidence: 0.50
+  max_image_side: 640  # matches previewer's capture-time downscale, so LoFTR never has to resize down further
+
+geometry:
+  min_matches: 40          # slightly relaxed vs production's 50: 640x640 frames yield fewer raw keypoints than full-res DJI stills
+  min_inliers: 25
+  min_inlier_ratio: 0.35
+  max_median_reprojection_error_px: 3.0
+  ransac_reproj_threshold_px: 4.0
+
+stitch:
+  generate_analysis_mosaic: true
+  generate_visual_mosaic: false   # coverage-gap tool: skip the extra multi-band blend pass previewer doesn't need
+  analysis_feather_blend: false
+  visual_multiband_blend: false
+  multiband_num_bands: 5
+
+colmap:
+  enabled: true
+  mode: fallback
+  max_drift_px: 10.0
+  max_seam_drift_px: 20.0
+  max_coverage_gap_ratio: 0.5

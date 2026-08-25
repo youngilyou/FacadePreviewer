@@ -1,0 +1,288 @@
+<Window x:Class="FacadePreviewer.TransferSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="고해상도 사진 전송"
+        Width="1150" Height="820" WindowStartupLocation="CenterOwner" WindowState="Maximized"
+        Background="{StaticResource Bg}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <!-- 왼쪽 설정 화면은 항상 520px 기준.
+                 사진 검토를 숨길 때는 코드비하인드에서 오른쪽 컬럼만 0으로 접고
+                 Window 자체 폭만 줄인다. 왼쪽 내용/배치는 변경하지 않는다. -->
+            <ColumnDefinition x:Name="MainSettingsColumn" Width="Auto"/>
+            <ColumnDefinition x:Name="ReviewPanelColumn" Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 사진 검토 토글 버튼: 기존 기능/이름/이벤트는 그대로 유지하고,
+             전체 창 우측 끝이 아니라 왼쪽 서버 접속 설정 영역의 우측 상단으로만 이동 -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,0,8,8">
+            <Button x:Name="ReviewPanelToggleButton" Content="사진 검토 보기" Click="OnReviewPanelToggleClick"/>
+        </StackPanel>
+
+        <!-- Width fixed regardless of window size (Auto column above). Maximizing the window
+             must never stretch the transfer-settings controls, only give this column's row more
+             vertical room (harmless; VerticalAlignment=Top keeps content anchored at its natural
+             height instead of spreading out). -->
+        <StackPanel x:Name="MainSettingsPanel"
+                    Grid.Row="1" Grid.Column="0" Width="520"
+                    HorizontalAlignment="Left" VerticalAlignment="Top">
+            <TextBlock Text="서버 접속 설정" Style="{StaticResource Kicker}" Margin="0,0,0,8"/>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="70"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Host / Port" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <TextBox x:Name="HostTextBox" Grid.Column="1" Margin="0,0,6,0" Padding="6,4"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+                <TextBlock Grid.Column="2" Text=":" Foreground="{StaticResource Text2}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                <TextBox x:Name="PortTextBox" Grid.Column="3" Text="22" Padding="6,4"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+            </Grid>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="SSH 사용자" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <TextBox x:Name="SshUserTextBox" Grid.Column="1" Padding="6,4"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+            </Grid>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="SSH 키 (선택)" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <TextBox x:Name="SshKeyTextBox" Grid.Column="1" Padding="6,4" Margin="0,0,6,0"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+                <Button Grid.Column="2" Content="찾아보기..." Click="OnBrowseSshKey"/>
+            </Grid>
+
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="수신 경로" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <TextBox x:Name="RemoteRootTextBox" Text="/home/yiyou/ftpdatafolder" Grid.Column="1" Padding="6,4"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+            </Grid>
+
+            <TextBlock Text="CrackVisionDB 연동 (자동 동 단위 zip 묶음) -- DDS로 방향 세트 등록, 별도 로그인 불필요" Style="{StaticResource Kicker}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+
+            <TextBlock Text="분류 (회사/동/방향/세션) -- 아래 두 목록은 config\facade_targets.json에 미리 등록된 값 중에서만 선택합니다 (오타 방지, 직접 입력 불가)" Style="{StaticResource Kicker}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="회사(아파트)" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <ComboBox x:Name="CompanyComboBox" Grid.Column="1" IsEditable="False" DisplayMemberPath="Name"
+                          SelectionChanged="OnCompanySelectionChanged"/>
+            </Grid>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="동/주소" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <ComboBox x:Name="BuildingComboBox" Grid.Column="1" IsEditable="False"/>
+            </Grid>
+            <TextBlock x:Name="CatalogWarningText" Foreground="#E0A030" TextWrapping="Wrap" Margin="0,0,0,6" Visibility="Collapsed"/>
+
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="방향" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <ComboBox x:Name="DirectionComboBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="OnDirectionSelectionChanged">
+                    <ComboBoxItem Content="FRONT (앞)"/>
+                    <ComboBoxItem Content="BACK (뒤)"/>
+                    <ComboBoxItem Content="LEFT (좌)"/>
+                    <ComboBoxItem Content="RIGHT (우)"/>
+                    <ComboBoxItem Content="ROOF (지붕)"/>
+                    <ComboBoxItem Content="OTHER (기타)"/>
+                </ComboBox>
+            </Grid>
+
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="세션 ID" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <TextBox x:Name="SessionIdTextBox" Padding="6,4" Grid.Column="1"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+            </Grid>
+
+            <CheckBox x:Name="BatchModeCheckBox" Content="일괄 전송 (하위 폴더별 방향 자동 인식 -- 앞/뒤/좌/우/옥상 등 한글 폴더명도 인식)"
+                      Foreground="{StaticResource Text2}" Margin="0,0,0,8" Checked="OnBatchModeChanged" Unchecked="OnBatchModeChanged"/>
+
+            <TextBlock x:Name="LocalFolderKicker" Text="전송할 로컬 폴더" Style="{StaticResource Kicker}" Margin="0,4,0,8"/>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="LocalFolderTextBox" Padding="6,4"
+                         Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
+                <Button Grid.Column="1" Content="폴더 찾기..." Click="OnBrowseLocalFolder" Margin="6,0,0,0"/>
+            </Grid>
+            <TextBlock x:Name="DetectedDirectionsText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,0,0,10" Visibility="Collapsed"/>
+
+            <Border Background="#332A1000" BorderBrush="#E0A030" BorderThickness="1" Padding="8,6" Margin="0,0,0,10">
+                <TextBlock Text="⚠ 전송 및 저장 처리가 끝날 때까지 통신 상태를 유지하세요. 한 폴더(면) 전송이 시작되면 완료될 때까지 이 창의 다른 조작 없이 대기해야 합니다. 여러 방향을 함께 보낼 경우 한 번에 한 방향씩 순서대로 전송됩니다."
+                           Foreground="#E0A030" TextWrapping="Wrap" FontWeight="SemiBold"/>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                <Button x:Name="TransferButton" Content="전송" Click="OnTransferClick" Margin="0,0,8,0"/>
+                <Button x:Name="CancelButton" Content="취소" Click="OnCancelClick" IsEnabled="False"/>
+            </StackPanel>
+
+            <ProgressBar x:Name="TransferProgressBar" Height="18" Minimum="0" Maximum="100" Margin="0,0,0,6"/>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource Text2}" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- 전송 전 사진 검토 패널. 체크 해제는 원본 파일을 지우지 않고 이번 전송에서만 제외한다
+             (see TransferSettingsWindow.xaml.cs's ReviewImageItem/GetExcludedFileSet comments).
+             전송 버튼을 누르면 자동으로 숨겨지고, 위 토글 버튼으로 언제든 다시 열 수 있다. 두 하위
+             영역(썸네일/원본) 배경을 Surface2로 통일했다 (디자인 검토 시 "왼쪽 색으로 통일" 코멘트 반영). -->
+        <!-- Grid.Column="1" is a "*" column (see outer Grid.ColumnDefinitions above), so this
+             panel's own width grows when the window is maximized. Within it, Row 1's thumbnail
+             column is also proportional (not a fixed pixel width) so each thumbnail (bound to that
+             column's own ScrollViewer.ViewportWidth) grows right along with the window too,
+             confirmed via a real screenshot that a fixed-size thumbnail strip otherwise left
+             obviously wasted space once maximized. Neither the thumbnail column nor this panel
+             carries an explicit MaxHeight: an earlier one (meant only to stop the thumbnail
+             ScrollViewer from blowing out the window's size back when this Window still used
+             SizeToContent) started leaving a dead gap above/below the thumbnails once SizeToContent
+             was dropped in favor of a fixed Width/Height plus WindowState="Maximized" (see
+             TransferSettingsWindow.xaml.cs's own comment on why that switch was necessary); with
+             that gone, both columns in Row 1 correctly stretch to fill whatever height is actually
+             available in either window state. -->
+        <Border x:Name="ReviewPanelBorder" Grid.Row="1" Grid.Column="1" Margin="12,0,0,0"
+                Background="{StaticResource Surface2}" BorderBrush="{StaticResource Border}" BorderThickness="1"
+                Padding="10" Visibility="Collapsed">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="ReviewDirectionComboBox" Grid.Column="0" Margin="0,0,6,0"
+                              SelectionChanged="OnReviewDirectionChanged"/>
+                    <CheckBox x:Name="ReviewSelectAllCheckBox" Grid.Column="1" Content="전체 선택"
+                              Foreground="{StaticResource Text2}" VerticalAlignment="Center" Margin="0,0,8,0"
+                              Checked="OnReviewSelectAllChanged" Unchecked="OnReviewSelectAllChanged"/>
+                    <!-- Single-clicking a thumbnail highlights it (see the selection-outline Border
+                         in the ItemTemplate below) and enables this button; clicking it shows that
+                         thumbnail's original, same as double-clicking it directly does. An
+                         explicit, discoverable alternative added alongside double-click, not
+                         instead of it (design review: "버튼 하나 넣고 스위치 위치되게 해도 됨"). -->
+                    <Button x:Name="ViewOriginalButton" Grid.Column="2" Content="원본 보기" Margin="0,0,8,0"
+                            IsEnabled="False" Click="OnViewOriginalButtonClick"/>
+                    <Button Grid.Column="3" Content="선택 제외" Click="OnReviewExcludeClick"/>
+                </Grid>
+
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <!-- Proportional (not a fixed pixel width), so the thumbnail strip, and
+                             therefore each thumbnail's own size (bound to the ScrollViewer's
+                             ViewportWidth below), grows along with the window instead of staying
+                             a fixed small size once maximized (design review: "풀화면 하면 썸네일
+                             크기도 같이 세로로 커져야함"). MinWidth/MaxWidth keep it from ever
+                             getting unreasonably small or huge. -->
+                        <ColumnDefinition Width="1.3*" MinWidth="90" MaxWidth="220"/>
+                        <ColumnDefinition Width="5*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Grid Grid.Column="0" Margin="0,0,8,0">
+                        <ScrollViewer x:Name="ThumbnailScrollViewer" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="ThumbnailItemsControl">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- Width/Height both bound to the ScrollViewer's own
+                                             ViewportWidth (the content area, already excluding the
+                                             scrollbar's own width) so every thumbnail stays square
+                                             and automatically resizes as the column resizes. -->
+                                        <Border Width="{Binding ViewportWidth, ElementName=ThumbnailScrollViewer}"
+                                                Height="{Binding ViewportWidth, ElementName=ThumbnailScrollViewer}"
+                                                Margin="0,0,0,6" BorderThickness="1"
+                                                BorderBrush="{StaticResource Border}" Background="{StaticResource Bg}"
+                                                Tag="{Binding}" MouseLeftButtonDown="OnThumbnailClicked">
+                                            <Grid>
+                                                <Image Source="{Binding ThumbnailSource}" Stretch="Uniform"
+                                                       Opacity="{Binding Opacity}" Margin="2"/>
+                                                <CheckBox IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                                                          HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1"/>
+                                                <!-- Transparent (invisible) unless IsSelected, see
+                                                     ReviewImageItem.SelectionBorderBrush. -->
+                                                <Border BorderBrush="{Binding SelectionBorderBrush}" BorderThickness="3"
+                                                        IsHitTestVisible="False"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <Border x:Name="ThumbnailLoadingOverlay" Background="#CC14181A" Visibility="Collapsed">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="생성 중..." Foreground="{StaticResource Text2}" HorizontalAlignment="Center"
+                                           TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <ProgressBar IsIndeterminate="True" Width="80" Height="6"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Column="1" Background="{StaticResource Surface2}" ClipToBounds="True">
+                        <Grid x:Name="OriginalPreviewGrid" Background="Transparent"
+                              MouseWheel="OnOriginalPreviewMouseWheel" MouseLeftButtonDown="OnOriginalPreviewMouseDown"
+                              MouseLeftButtonUp="OnOriginalPreviewMouseUp" MouseMove="OnOriginalPreviewMouseMove">
+                            <Image x:Name="OriginalPreviewImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality">
+                                <Image.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="OriginalPreviewScale"/>
+                                        <TranslateTransform x:Name="OriginalPreviewTranslate"/>
+                                    </TransformGroup>
+                                </Image.RenderTransform>
+                            </Image>
+                            <TextBlock x:Name="OriginalPreviewHint"
+                                       Text="썸네일을 클릭하면 원본이 여기 표시됩니다 (마우스 휠: 확대/축소, 드래그: 이동)"
+                                       Foreground="{StaticResource Text2}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" Margin="16"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

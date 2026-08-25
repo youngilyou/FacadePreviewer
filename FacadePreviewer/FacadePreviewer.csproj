@@ -1,0 +1,71 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.WpfExtensions" Version="4.13.0.20260627" />
+  </ItemGroup>
+
+  <!-- FacadeDdsBridge.dll is a separate native CMake project (../FacadeDdsBridge),
+       not built by this .csproj: build it first via FacadeDdsBridge/build.ps1
+       (that script's /p:VCToolsVersion flag is required, see its comments and
+       ../CLAUDE.local.md's "빌드 이식성" section). These items just copy its
+       already-built output, plus the FastDDS SDK's own runtime DLLs, next to
+       this app's .exe: same pattern Map2Stitch_Wpf's WPF project uses for
+       its native Core DLL, applied fresh here (no code shared, just the
+       standard MSBuild technique for a C++/C# hybrid). -->
+  <!-- [YYIL] 2026-08, ORB-SLAM3 removed: FacadeDdsBridge/CMakeLists.txt's EPROSIMA_ALL_DYN_LINK
+       always links the Release-named fastdds-3.6.dll/fastcdr-2.3.dll (never the
+       fastddsd-3.6.dll/fastcdrd-2.3.dll Debug-variant names), in BOTH C++ Debug and Release
+       configs; confirmed via `dumpbin /dependents` on both build/Debug/FacadeDdsBridge.dll
+       and build/Release/FacadeDdsBridge.dll. So there's no Debug-variant FastDDS DLL to copy
+       here at all, regardless of $(Configuration). -->
+  <ItemGroup>
+    <None Include="..\FacadeDdsBridge\build\$(Configuration)\FacadeDdsBridge.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\FacadeDdsBridge\build\$(Configuration)\FacadeDdsBridge.dll')" />
+    <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\fastdds-3.6.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\fastdds-3.6.dll')" />
+    <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\fastcdr-2.3.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\fastcdr-2.3.dll')" />
+    <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\foonathan_memory-0.7.4.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\foonathan_memory-0.7.4.dll')" />
+  </ItemGroup>
+
+  <!-- FFmpeg shared/dev build's runtime DLLs (libavcodec/libavutil/libswscale + libswresample,
+       which avcodec pulls in), needed because FacadeDdsBridge.dll now links against these
+       for VideoDecoder's H.264 decode path (see tools/Get-FfmpegDevModule.ps1,
+       tools/README.md). Wildcarded (not exact filenames like the FastDDS DLLs above) because
+       FFmpeg's .dll names are version-suffixed (avcodec-61.dll etc.) and would silently stop
+       being copied on a future FFmpeg version bump if hardcoded; same reasoning as the
+       CMakeLists.txt file(GLOB ...) this mirrors on the native build side. -->
+  <ItemGroup>
+    <FfmpegRuntimeDll Include="..\tools\libffmpeg\bin\avcodec-*.dll;..\tools\libffmpeg\bin\avutil-*.dll;..\tools\libffmpeg\bin\swscale-*.dll;..\tools\libffmpeg\bin\swresample-*.dll" />
+    <None Include="@(FfmpegRuntimeDll)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <!-- Vendored Cygwin rsync.exe + its runtime DLLs (see tools/Get-CygwinRsync.ps1) for the
+       facade image transfer feature (TransferSettingsWindow -> RsyncTransferService ->
+       FacadeDdsBridge.dll's RsyncTransfer wrapper). Copied into a cygwin_rsync\bin\ subfolder
+       of the output dir (Link preserves that relative layout, matching what
+       TransferSettingsWindow.xaml.cs.OnTransferClick looks for via AppContext.BaseDirectory);
+       deliberately not flattened into the app's own output root, keeping this Cygwin runtime
+       visibly separate from the MSVC-built FacadeDdsBridge.dll/FastDDS/FFmpeg DLLs alongside it. -->
+  <ItemGroup>
+    <CygwinRsyncFile Include="..\tools\cygwin_rsync\bin\*" />
+    <None Include="@(CygwinRsyncFile)" CopyToOutputDirectory="PreserveNewest" Visible="false"
+          Link="cygwin_rsync\bin\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Local company/building name catalog (see Services/FacadeTargetCatalog.cs). PreserveNewest
+       (not always-overwrite) so a site administrator's edits to the deployed copy next to the
+       .exe survive a rebuild/redeploy of the app itself. -->
+  <ItemGroup>
+    <None Include="config\facade_targets.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

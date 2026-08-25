@@ -1,0 +1,71 @@
+﻿module map2stitch_msgs {
+  module msg {
+
+    struct Vector3d {
+      double x;
+      double y;
+      double z;
+    };
+
+    struct Quaterniond {
+      double x;
+      double y;
+      double z;
+      double w;
+    };
+
+    struct GeoPoint {
+      double latitude_deg;
+      double longitude_deg;
+      double altitude_m;
+    };
+
+    struct CameraIntrinsics {
+      uint32 intrinsics_id;
+      uint32 width;
+      uint32 height;
+      double fx;
+      double fy;
+      double cx;
+      double cy;
+      double k1;
+      double k2;
+      double p1;
+      double p2;
+      double k3;
+    };
+
+    // Metadata for one image frame. Media bytes are sent on MediaFrameChunk.
+    // Join key: stream_id + frame_id + timestamp_sec.
+    struct ImageSensorFrame {
+      string stream_id;              // must match MediaFrameChunk.stream_id
+      uint32 frame_id;               // must match MediaFrameChunk.frame_id
+      double timestamp_sec;          // capture timestamp, seconds
+
+      string image_encoding;         // jpeg, png, h264, h265, mpeg2ts, raw_bgr8, raw_rgb8
+      uint32 image_width;
+      uint32 image_height;
+      uint32 image_total_length;
+      uint32 expected_chunk_count;   // expected chunks on MediaFrameChunk, 0 if unknown
+
+      boolean has_gps;
+      GeoPoint gps;                  // global position for map anchoring and validation
+
+      boolean has_local_position;
+      Vector3d local_position_m;     // local ENU or configured map frame, meters
+
+      boolean has_camera_pose;
+      Vector3d camera_position_m;    // camera pose used by Map2StitchCore projection
+      Quaterniond camera_orientation;
+
+      boolean has_imu;
+      Vector3d imu_accel_mps2;
+      Vector3d imu_gyro_rps;
+
+      boolean has_intrinsics;
+      uint32 camera_intrinsics_id;
+      CameraIntrinsics intrinsics;
+    };
+
+  };
+};
