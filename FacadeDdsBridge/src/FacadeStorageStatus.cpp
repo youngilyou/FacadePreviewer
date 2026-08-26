@@ -110,15 +110,18 @@ struct FacadeStorageStatus::Impl
     Topic* result_topic = nullptr;
     Topic* cancel_topic = nullptr;
     Topic* requirements_topic = nullptr;
+    Topic* finalize_topic = nullptr;
     DataReader* feedback_reader = nullptr;
     DataReader* result_reader = nullptr;
     DataWriter* cancel_writer = nullptr;
     DataWriter* requirements_writer = nullptr;
+    DataWriter* finalize_writer = nullptr;
 
     TypeSupport feedback_type{new facade_storage_msgs::msg::FacadeStorageFeedbackPubSubType()};
     TypeSupport result_type{new facade_storage_msgs::msg::FacadeStorageResultPubSubType()};
     TypeSupport cancel_type{new facade_storage_msgs::msg::FacadeStorageCancelRequestPubSubType()};
     TypeSupport requirements_type{new facade_storage_msgs::msg::FacadeStorageRequirementsPubSubType()};
+    TypeSupport finalize_type{new facade_storage_msgs::msg::FacadeStorageFinalizeRequestPubSubType()};
 
     FeedbackListener feedback_listener;
     ResultListener result_listener;
@@ -141,7 +144,8 @@ void FacadeStorageStatus::SetCallbacks(FacadeStorageFeedbackCallback feedback_cb
 }
 
 bool FacadeStorageStatus::Start(int domain_id, const char* feedback_topic, const char* result_topic, const char* cancel_topic,
-        const char* requirements_topic, const char* initial_peer_host, int initial_peer_port, const char* local_interface_ip)
+        const char* requirements_topic, const char* finalize_topic, const char* initial_peer_host, int initial_peer_port,
+        const char* local_interface_ip)
 {
     Impl* impl = impl_;
     auto factory = DomainParticipantFactory::get_instance();
@@ -158,6 +162,7 @@ bool FacadeStorageStatus::Start(int domain_id, const char* feedback_topic, const
     impl->result_type.register_type(impl->participant);
     impl->cancel_type.register_type(impl->participant);
     impl->requirements_type.register_type(impl->participant);
+    impl->finalize_type.register_type(impl->participant);
 
     impl->publisher = impl->participant->create_publisher(PUBLISHER_QOS_DEFAULT);
     impl->subscriber = impl->participant->create_subscriber(SUBSCRIBER_QOS_DEFAULT);
@@ -171,7 +176,9 @@ bool FacadeStorageStatus::Start(int domain_id, const char* feedback_topic, const
     impl->result_topic = impl->participant->create_topic(result_topic, impl->result_type.get_type_name(), TOPIC_QOS_DEFAULT);
     impl->cancel_topic = impl->participant->create_topic(cancel_topic, impl->cancel_type.get_type_name(), TOPIC_QOS_DEFAULT);
     impl->requirements_topic = impl->participant->create_topic(requirements_topic, impl->requirements_type.get_type_name(), TOPIC_QOS_DEFAULT);
-    if (!impl->feedback_topic || !impl->result_topic || !impl->cancel_topic || !impl->requirements_topic)
+    impl->finalize_topic = impl->participant->create_topic(finalize_topic, impl->finalize_type.get_type_name(), TOPIC_QOS_DEFAULT);
+    if (!impl->feedback_topic || !impl->result_topic || !impl->cancel_topic || !impl->requirements_topic ||
+            !impl->finalize_topic)
     {
         fprintf(stderr, "FacadeStorageStatus: failed to create topics\n");
         return false;
@@ -235,8 +242,23 @@ bool FacadeStorageStatus::Start(int domain_id, const char* feedback_topic, const
         return false;
     }
 
-    printf("FacadeStorageStatus: listening on domain %d (feedback='%s', result='%s', cancel='%s', requirements='%s')\n",
-            domain_id, feedback_topic, result_topic, cancel_topic, requirements_topic);
+    // RELIABLE + TRANSIENT_LOCAL for the same reasons as cancel_wqos/requirements_wqos above --
+    // must match crackvision_archive_manager.cpp's finalize_reader durability.
+    DataWriterQos finalize_wqos = DATAWRITER_QOS_DEFAULT;
+    finalize_wqos.reliability().kind = RELIABLE_RELIABILITY_QOS;
+    finalize_wqos.durability().kind = TRANSIENT_LOCAL_DURABILITY_QOS;
+    finalize_wqos.history().kind = KEEP_LAST_HISTORY_QOS;
+    finalize_wqos.history().depth = 10;
+    impl->finalize_writer = impl->publisher->create_datawriter(impl->finalize_topic, finalize_wqos);
+    if (!impl->finalize_writer)
+    {
+        fprintf(stderr, "FacadeStorageStatus: failed to create finalize writer\n");
+        return false;
+    }
+
+    printf("FacadeStorageStatus: listening on domain %d (feedback='%s', result='%s', cancel='%s', requirements='%s', "
+           "finalize='%s')\n",
+            domain_id, feedback_topic, result_topic, cancel_topic, requirements_topic, finalize_topic);
     return true;
 }
 
@@ -263,10 +285,24 @@ void FacadeStorageStatus::Stop()
     impl_->result_topic = nullptr;
     impl_->cancel_topic = nullptr;
     impl_->requirements_topic = nullptr;
+    impl_->finalize_topic = nullptr;
     impl_->feedback_reader = nullptr;
     impl_->result_reader = nullptr;
     impl_->cancel_writer = nullptr;
     impl_->requirements_writer = nullptr;
+    impl_->finalize_writer = nullptr;
+}
+
+bool FacadeStorageStatus::SendFinalizeRequest(const char* company, const char* building)
+{
+    if (!impl_->finalize_writer)
+        return false;
+    facade_storage_msgs::msg::FacadeStorageFinalizeRequest request;
+    request.company(company ? company : "");
+    request.building(building ? building : "");
+    request.requested_at_epoch_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+    return impl_->finalize_writer->write(&request) == RETCODE_OK;
 }
 
 bool FacadeStorageStatus::SendCancelRequest(const char* company, const char* building)

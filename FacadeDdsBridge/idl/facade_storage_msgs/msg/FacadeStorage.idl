@@ -91,5 +91,21 @@ module facade_storage_msgs {
       long long requested_at_epoch_ms;
     };
 
+    // FacadePreviewer -> MngData. Operator-confirmed "this is everything for this building" signal
+    // (2026-08-26) -- explicitly triggers the archive for whatever has been received so far,
+    // bypassing FacadeStorageRequirements' normal auto-complete-when-all-directions-arrive check.
+    // Added because that auto-complete check compares against the FULL accumulated
+    // required_directions/required_counts ever declared for a (company, building) -- reusing the
+    // same test building across many sessions left stale requirements from earlier, unrelated
+    // declarations sitting in facade_building_requirements, so the accumulated total never matched
+    // what was actually sent in any single real attempt. RELIABLE, same shape as
+    // FacadeStorageCancelRequest -- a lost finalize request would leave the operator's "예" click
+    // silently do nothing.
+    struct FacadeStorageFinalizeRequest {
+      string company;
+      string building;
+      long long requested_at_epoch_ms;
+    };
+
   };
 };

@@ -36,6 +36,9 @@ constexpr uint32_t facade_storage_msgs_msg_FacadeStorageRequirements_max_key_cdr
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFeedback_max_cdr_typesize {800UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFeedback_max_key_cdr_typesize {0UL};
 
+constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFinalizeRequest_max_cdr_typesize {536UL};
+constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFinalizeRequest_max_key_cdr_typesize {0UL};
+
 
 namespace eprosima {
 namespace fastcdr {
@@ -58,6 +61,10 @@ eProsima_user_DllExport void serialize_key(
 eProsima_user_DllExport void serialize_key(
         eprosima::fastcdr::Cdr& scdr,
         const facade_storage_msgs::msg::FacadeStorageRequirements& data);
+
+eProsima_user_DllExport void serialize_key(
+        eprosima::fastcdr::Cdr& scdr,
+        const facade_storage_msgs::msg::FacadeStorageFinalizeRequest& data);
 
 
 } // namespace fastcdr

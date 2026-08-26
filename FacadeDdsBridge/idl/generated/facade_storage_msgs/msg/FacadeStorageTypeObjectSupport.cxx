@@ -1036,6 +1036,141 @@ void register_FacadeStorageRequirements_type_identifier(
         }
     }
 }
+// TypeIdentifier is returned by reference: dependent structures/unions are registered in this same method
+void register_FacadeStorageFinalizeRequest_type_identifier(
+        TypeIdentifierPair& type_ids_FacadeStorageFinalizeRequest)
+{
+
+    ReturnCode_t return_code_FacadeStorageFinalizeRequest {eprosima::fastdds::dds::RETCODE_OK};
+    return_code_FacadeStorageFinalizeRequest =
+        eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+        "facade_storage_msgs::msg::FacadeStorageFinalizeRequest", type_ids_FacadeStorageFinalizeRequest);
+    if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageFinalizeRequest)
+    {
+        StructTypeFlag struct_flags_FacadeStorageFinalizeRequest = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+                false, false);
+        QualifiedTypeName type_name_FacadeStorageFinalizeRequest = "facade_storage_msgs::msg::FacadeStorageFinalizeRequest";
+        eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageFinalizeRequest;
+        eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageFinalizeRequest;
+        CompleteTypeDetail detail_FacadeStorageFinalizeRequest = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageFinalizeRequest, ann_custom_FacadeStorageFinalizeRequest, type_name_FacadeStorageFinalizeRequest.to_string());
+        CompleteStructHeader header_FacadeStorageFinalizeRequest;
+        header_FacadeStorageFinalizeRequest = TypeObjectUtils::build_complete_struct_header(TypeIdentifier(), detail_FacadeStorageFinalizeRequest);
+        CompleteStructMemberSeq member_seq_FacadeStorageFinalizeRequest;
+        {
+            TypeIdentifierPair type_ids_company;
+            ReturnCode_t return_code_company {eprosima::fastdds::dds::RETCODE_OK};
+            return_code_company =
+                eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+                "anonymous_string_unbounded", type_ids_company);
+
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_company)
+            {
+                {
+                    SBound bound = 0;
+                    StringSTypeDefn string_sdefn = TypeObjectUtils::build_string_s_type_defn(bound);
+                    if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
+                            TypeObjectUtils::build_and_register_s_string_type_identifier(string_sdefn,
+                            "anonymous_string_unbounded", type_ids_company))
+                    {
+                        EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                            "anonymous_string_unbounded already registered in TypeObjectRegistry for a different type.");
+                    }
+                }
+            }
+            StructMemberFlag member_flags_company = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+                    false, false, false, false);
+            MemberId member_id_company = 0x00000000;
+            bool common_company_ec {false};
+            CommonStructMember common_company {TypeObjectUtils::build_common_struct_member(member_id_company, member_flags_company, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_company, common_company_ec))};
+            if (!common_company_ec)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION, "Structure company member TypeIdentifier inconsistent.");
+                return;
+            }
+            MemberName name_company = "company";
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_company;
+            ann_custom_FacadeStorageFinalizeRequest.reset();
+            CompleteMemberDetail detail_company = TypeObjectUtils::build_complete_member_detail(name_company, member_ann_builtin_company, ann_custom_FacadeStorageFinalizeRequest);
+            CompleteStructMember member_company = TypeObjectUtils::build_complete_struct_member(common_company, detail_company);
+            TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageFinalizeRequest, member_company);
+        }
+        {
+            TypeIdentifierPair type_ids_building;
+            ReturnCode_t return_code_building {eprosima::fastdds::dds::RETCODE_OK};
+            return_code_building =
+                eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+                "anonymous_string_unbounded", type_ids_building);
+
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_building)
+            {
+                {
+                    SBound bound = 0;
+                    StringSTypeDefn string_sdefn = TypeObjectUtils::build_string_s_type_defn(bound);
+                    if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
+                            TypeObjectUtils::build_and_register_s_string_type_identifier(string_sdefn,
+                            "anonymous_string_unbounded", type_ids_building))
+                    {
+                        EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                            "anonymous_string_unbounded already registered in TypeObjectRegistry for a different type.");
+                    }
+                }
+            }
+            StructMemberFlag member_flags_building = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+                    false, false, false, false);
+            MemberId member_id_building = 0x00000001;
+            bool common_building_ec {false};
+            CommonStructMember common_building {TypeObjectUtils::build_common_struct_member(member_id_building, member_flags_building, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_building, common_building_ec))};
+            if (!common_building_ec)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION, "Structure building member TypeIdentifier inconsistent.");
+                return;
+            }
+            MemberName name_building = "building";
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_building;
+            ann_custom_FacadeStorageFinalizeRequest.reset();
+            CompleteMemberDetail detail_building = TypeObjectUtils::build_complete_member_detail(name_building, member_ann_builtin_building, ann_custom_FacadeStorageFinalizeRequest);
+            CompleteStructMember member_building = TypeObjectUtils::build_complete_struct_member(common_building, detail_building);
+            TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageFinalizeRequest, member_building);
+        }
+        {
+            TypeIdentifierPair type_ids_requested_at_epoch_ms;
+            ReturnCode_t return_code_requested_at_epoch_ms {eprosima::fastdds::dds::RETCODE_OK};
+            return_code_requested_at_epoch_ms =
+                eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+                "_int64_t", type_ids_requested_at_epoch_ms);
+
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_requested_at_epoch_ms)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                        "requested_at_epoch_ms Structure member TypeIdentifier unknown to TypeObjectRegistry.");
+                return;
+            }
+            StructMemberFlag member_flags_requested_at_epoch_ms = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+                    false, false, false, false);
+            MemberId member_id_requested_at_epoch_ms = 0x00000002;
+            bool common_requested_at_epoch_ms_ec {false};
+            CommonStructMember common_requested_at_epoch_ms {TypeObjectUtils::build_common_struct_member(member_id_requested_at_epoch_ms, member_flags_requested_at_epoch_ms, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_requested_at_epoch_ms, common_requested_at_epoch_ms_ec))};
+            if (!common_requested_at_epoch_ms_ec)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION, "Structure requested_at_epoch_ms member TypeIdentifier inconsistent.");
+                return;
+            }
+            MemberName name_requested_at_epoch_ms = "requested_at_epoch_ms";
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_requested_at_epoch_ms;
+            ann_custom_FacadeStorageFinalizeRequest.reset();
+            CompleteMemberDetail detail_requested_at_epoch_ms = TypeObjectUtils::build_complete_member_detail(name_requested_at_epoch_ms, member_ann_builtin_requested_at_epoch_ms, ann_custom_FacadeStorageFinalizeRequest);
+            CompleteStructMember member_requested_at_epoch_ms = TypeObjectUtils::build_complete_struct_member(common_requested_at_epoch_ms, detail_requested_at_epoch_ms);
+            TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageFinalizeRequest, member_requested_at_epoch_ms);
+        }
+        CompleteStructType struct_type_FacadeStorageFinalizeRequest = TypeObjectUtils::build_complete_struct_type(struct_flags_FacadeStorageFinalizeRequest, header_FacadeStorageFinalizeRequest, member_seq_FacadeStorageFinalizeRequest);
+        if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
+                TypeObjectUtils::build_and_register_struct_type_object(struct_type_FacadeStorageFinalizeRequest, type_name_FacadeStorageFinalizeRequest.to_string(), type_ids_FacadeStorageFinalizeRequest))
+        {
+            EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                    "facade_storage_msgs::msg::FacadeStorageFinalizeRequest already registered in TypeObjectRegistry for a different type.");
+        }
+    }
+}
 
 } // namespace msg
 

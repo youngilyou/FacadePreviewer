@@ -126,7 +126,14 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="세션 ID" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                <TextBox x:Name="SessionIdTextBox" Padding="6,4" Grid.Column="1"
+                <!-- 자동 생성(년월일시분초)만 값으로 허용. 직접 입력/붙여넣기 시도는 팝업으로
+                     안내하고 값은 그대로 유지한다 (design review: "숫자만 자동 생성 되어야함,
+                     글을쓰면 팝업으로 알림, 아무것도 넣지 말라고"). IsReadOnly가 실제 값 변경 자체를
+                     막고(타이핑/삭제/드래그앤드롭/IME 조합 등 모든 경로), Preview 이벤트 두 개는
+                     IsReadOnly와 무관하게 여전히 발생하므로 그 시도 자체에 안내 팝업을 띄우는 용도. -->
+                <TextBox x:Name="SessionIdTextBox" Padding="6,4" Grid.Column="1" IsReadOnly="True"
+                         PreviewTextInput="OnSessionIdPreviewTextInput" PreviewKeyDown="OnSessionIdPreviewKeyDown"
+                         DataObject.Pasting="OnSessionIdPasting"
                          Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
             </Grid>
 

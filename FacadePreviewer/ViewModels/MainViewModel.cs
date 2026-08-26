@@ -62,6 +62,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionStatusText = "HOST 연결 안 됨";
 
+    // App.xaml.cs sets this right after login succeeds (see ShowMain).
+    [ObservableProperty] private string _loggedInUsername = "";
+
     [ObservableProperty] private string _measurementLocation = "";
     [ObservableProperty] private string _captureRootPath = Path.Combine(AppContext.BaseDirectory, "captures");
     [ObservableProperty] private bool _isCapturing;
@@ -132,9 +135,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> Buildings { get; } = new();
     [ObservableProperty] private string? _selectedBuilding;
 
-    // TransferSettingsWindow의 방향 콤보(FRONT/BACK/LEFT/RIGHT/ROOF/OTHER)와 동일한 고정 어휘 --
-    // MeasurementLocation은 이제 자유 텍스트가 아니라 이 목록 중 하나.
-    public IReadOnlyList<string> DirectionOptions { get; } = new[] { "FRONT", "BACK", "LEFT", "RIGHT", "ROOF", "OTHER" };
+    // TransferSettingsWindow의 방향 콤보(FRONT/BACK/LEFT/RIGHT/ROOF/OTHER)와 동일한 고정 어휘이
+    // 기본값 -- MeasurementLocation은 자유 텍스트가 아니라 이 목록 중 하나. GenerateJson이 만든
+    // assignment json에 Directions가 실려있으면(그 아파트의 실제 측정 장소, "정면 꺾임" 같은
+    // 임의 이름 포함 가능) LoadAssignment가 이 목록을 그걸로 교체한다 -- ObservableProperty라야
+    // 런타임에 교체 가능(예전엔 생성자에서만 값이 정해지는 읽기전용 필드였음).
+    [ObservableProperty] private IReadOnlyList<string> _directionOptions = new[] { "FRONT", "BACK", "LEFT", "RIGHT", "ROOF", "OTHER" };
 
     private readonly string _facadeTargetsPath = Path.Combine(AppContext.BaseDirectory, "config", "facade_targets.json");
 
@@ -181,6 +187,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
         LoadedAssignment = assignment;
+
+        // GenerateJson이 이 파일에 동 범위/측정 장소를 실어보냈으면 "동"/"측정 장소" 콤보박스도
+        // 이걸로 채운다 -- 구버전 assignment json(둘 다 없는 파일)은 Buildings/DirectionOptions
+        // 자체 로드(LoadFacadeTargets/생성자 기본값)를 그대로 두고 건드리지 않는다.
+        if (assignment.Buildings.Count > 0)
+        {
+            Buildings.Clear();
+            foreach (var b in assignment.Buildings)
+                Buildings.Add(b);
+            SelectedBuilding = Buildings.FirstOrDefault();
+        }
+        if (assignment.Directions.Count > 0)
+        {
+            DirectionOptions = assignment.Directions;
+            MeasurementLocation = DirectionOptions.FirstOrDefault() ?? "";
+        }
+
         StatusMessage = $"불러옴: Topic={assignment.Topic}, Key={assignment.Key}, DRONE={assignment.Drone}";
     }
 
@@ -212,12 +235,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    // "제가 json 로딩하면 전시 하면됨, 로딩 버튼 별도 필요" -- 수동 재로드용 버튼(admin이
-    // facade_targets.json을 고친 뒤 앱을 껐다 켜지 않고 반영하고 싶을 때)이자, 생성자에서 시작
-    // 시 한 번 자동으로도 호출됨. 이 앱은 배포당 하나의 현장만 다루므로 회사 목록의 첫 번째
-    // (보통 유일한) 항목만 쓴다 -- 여러 회사가 있으면 그중 첫 항목, 파일이 비었거나 없으면
-    // 안내 메시지로 표시(크래시 없음, FacadeTargetCatalog 자체가 이미 그렇게 동작).
-    [RelayCommand]
+    // 생성자에서 앱 시작 시 한 번만 호출된다(재로드 버튼은 제거됨 -- 사용자 요청: "불러오기
+    // 버튼 제거", 이제 동/측정장소는 보통 "촬영지역 설정 불러오기..."의 assignment json이
+    // 갈아치우므로 이 버튼의 존재 이유였던 수동 재로드 시나리오가 옅어짐). 이 앱은 배포당
+    // 하나의 현장만 다루므로 회사 목록의 첫 번째(보통 유일한) 항목만 쓴다 -- 여러 회사가
+    // 있으면 그중 첫 항목, 파일이 비었거나 없으면 안내 메시지로 표시(크래시 없음,
+    // FacadeTargetCatalog 자체가 이미 그렇게 동작).
     private void LoadFacadeTargets()
     {
         var catalog = FacadeTargetCatalog.Load(_facadeTargetsPath);
@@ -663,6 +686,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             HasCapturedFrames = true;
         });
     }
+
+    /// <summary>Raised by LogoutCommand -- App.xaml.cs subscribes to this to close MainWindow and
+    /// loop back to a fresh LoginWindow without shutting the whole process down (same pattern as
+    /// CheckCrackViewer's MainViewModel).</summary>
+    public event Action? LogoutRequested;
+
+    [RelayCommand]
+    private void Logout() => LogoutRequested?.Invoke();
 
     // "선택 제외" button: checkbox polarity matches TransferSettingsWindow's own review panel for
     // consistency across the app (checked = included/keep, default true) -- so this processes

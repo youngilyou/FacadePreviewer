@@ -108,6 +108,13 @@
                         </Ellipse>
                         <TextBlock Text="{Binding ConnectionStatusText}" Foreground="{StaticResource Text2}"
                                    FontSize="11.5" VerticalAlignment="Center"/>
+
+                        <TextBlock Text="{Binding LoggedInUsername, StringFormat='  ·  로그인: {0}'}"
+                                   Foreground="{StaticResource Text2}" FontSize="11.5" Margin="10,0,0,0"
+                                   VerticalAlignment="Center"/>
+                        <Button Content="로그아웃" Command="{Binding LogoutCommand}" Margin="10,0,0,0"
+                                Background="Transparent" BorderThickness="0" Padding="4,2"
+                                Foreground="{StaticResource Accent}" FontSize="11.5" Cursor="Hand"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -391,24 +398,19 @@
                          text gets its own row below with a bounded width so TextWrapping can
                          actually kick in (capped to ~2 lines via MaxHeight rather than trusting the
                          text to stay short). -->
-                    <!-- 촬영현장/동/측정장소(방향) 그룹. 셋 다 config/facade_targets.json
-                         (FacadeTargetCatalog, TransferSettingsWindow와 공유)에서 나온다.
-                         촬영현장은 그 파일의 첫 회사 이름을 읽기전용으로만 보여줌(수정 불가,
-                         "불러오기" 버튼으로만 갱신), 이 앱은 배포당 한 현장만 다루므로 고를
-                         필요가 없다. 동은 그 회사의 buildings 목록, 측정장소는
-                         TransferSettingsWindow의 방향 콤보와 동일한 고정 어휘
-                         (FRONT/BACK/LEFT/RIGHT/ROOF/OTHER), 더 이상 자유 텍스트가 아니다. -->
+                    <!-- 촬영현장/동/측정장소(방향) 그룹. 촬영현장은 config/facade_targets.json의
+                         첫 회사 이름을 읽기전용으로 보여줌(앱 시작 시 한 번 자동 로드, 이 앱은
+                         배포당 한 현장만 다루므로 재로드 버튼이 필요 없음. 수정하려면 파일
+                         고치고 재시작). 동/측정장소는 기본은 같은 파일에서 오지만, "촬영지역
+                         설정 불러오기..."로 GenerateJson assignment json을 불러오면 그 파일의
+                         Buildings/Directions로 교체된다(LoadAssignment). -->
                     <Border BorderBrush="{StaticResource Border}" BorderThickness="1" CornerRadius="4"
                             Padding="10,8" Margin="0,0,0,10">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Text="촬영현장" Foreground="{StaticResource Text2}" FontSize="11.5"
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
                             <TextBlock Text="{Binding SiteDisplayName}" Foreground="{StaticResource Text}"
-                                       FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <Button Content="불러오기" Command="{Binding LoadFacadeTargetsCommand}"
-                                    IsEnabled="{Binding IsCapturing, Converter={StaticResource InverseBoolConverter}}"
-                                    ToolTip="config\facade_targets.json을 다시 읽어옵니다 (관리자가 파일을 고쳤을 때 재시작 없이 반영)"
-                                    Margin="0,0,20,0"/>
+                                       FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,20,0"/>
 
                             <TextBlock Text="동" Foreground="{StaticResource Text2}" FontSize="11.5"
                                        VerticalAlignment="Center" Margin="0,0,8,0"/>

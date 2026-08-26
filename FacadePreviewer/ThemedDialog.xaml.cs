@@ -68,4 +68,13 @@ public partial class ThemedDialog : Window
     {
         Show(owner, title, message, titleColor, ("ok", "확인", true));
     }
+
+    /// <summary>Yes/No confirmation dialog -- returns true only for an explicit "예" click. A "아니오"
+    /// click OR dismissing without clicking either button (Alt+F4/X/Escape) both return false, per
+    /// Show's own guidance to treat "no click" as the safest/most conservative choice.</summary>
+    public static bool ShowConfirm(Window? owner, string title, string message, Brush titleColor,
+        string yesLabel = "예", string noLabel = "아니오")
+    {
+        return Show(owner, title, message, titleColor, ("yes", yesLabel, true), ("no", noLabel, false)) == "yes";
+    }
 }

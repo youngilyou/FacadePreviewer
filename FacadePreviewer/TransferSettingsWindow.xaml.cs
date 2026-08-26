@@ -78,6 +78,7 @@ public partial class TransferSettingsWindow : Window
     private const string ResultTopic = "rt/facade_storage_result";
     private const string CancelTopic = "rt/facade_storage_cancel_request";
     private const string RequirementsTopic = "rt/facade_storage_requirements";
+    private const string FinalizeTopic = "rt/facade_storage_finalize";
 
     private enum Phase { Idle, Transferring, Storing }
     private enum RetryChoice { Restart, Resume, Abort }
@@ -164,18 +165,22 @@ public partial class TransferSettingsWindow : Window
             TransferButton.IsEnabled = false;
         }
 
+
         ApplySavedSettings(catalog);
 
-        // 초기 표시 상태 보정:
-        // 검토 패널이 열려 있으면 최대화 가능한 풀스크린,
-        // 닫혀 있으면 최대화 버튼 없는 컴팩트 창 규칙을 그대로 적용한다.
-        Loaded += (_, _) =>
-        {
-            if (ReviewPanelBorder.Visibility == Visibility.Visible)
-                ResizeMode = ResizeMode.CanResize;
-            else
-                ResizeMode = ResizeMode.CanMinimize;
-        };
+        // ApplySavedSettings restores last-used folder/direction/batch-mode from disk, and setting
+        // those controls fires the same handlers a manual pick would (OnBatchModeChanged /
+        // OnDirectionSelectionChanged), which call RefreshReviewPanel -- so if the restored folder
+        // still exists on disk, the window would silently open already maximized with the review
+        // panel expanded, before the operator ever touched 사진 검토 보기 themselves (confirmed via
+        // a real repro: reopening the dialog after a previous session's transfer opened straight
+        // into the wide review layout). _reviewPlan/_detectedBatch/thumbnail caches built by that
+        // restore are left untouched here -- only visibility/window sizing is forced back to
+        // closed, so the operator's first manual 사진 검토 보기 click still shows the restored
+        // folder's content immediately (see OnReviewPanelToggleClick, which reuses _reviewPlan
+        // as-is rather than rebuilding it).
+        //  HideReviewPanel();
+        HideReviewPanel_Start();
     }
 
     // Restores the operator's last-used values from _settingsPath (see TransferSettingsStore) --
@@ -255,6 +260,42 @@ public partial class TransferSettingsWindow : Window
             Direction: direction));
     }
 
+    // 세션 ID는 항상 자동 생성된 년월일시분초 값이어야 한다 (design review: "숫자만 자동 생성
+    // 되어야함, 글을쓰면 팝업으로 알림, 아무것도 넣지 말라고") -- 서로 다른 방향을 같은 세션 ID로
+    // 잘못 보내면 같은 facade_image_sessions 행에 흡수되어 버리는 실제 버그를 이미 겪었으므로
+    // (facade_image_sessions의 PK가 session_id 단독이라 방향별로 자동 구분되지 않음), 운영자가
+    // 실수로/의도적으로 값을 바꾸는 경로 자체를 막는다. SessionIdTextBox.IsReadOnly가 실제 값
+    // 변경(타이핑/삭제/드래그앤드롭/IME 조합 등 모든 경로)을 막고, 아래 세 핸들러는 IsReadOnly와
+    // 무관하게 여전히 발생하는 입력 시도 이벤트에 안내 팝업만 띄운다.
+    private void ShowSessionIdLockedNotice()
+    {
+        ThemedDialog.ShowInfo(this, "세션 ID",
+            "세션 ID는 자동으로 생성됩니다 (년월일시분초). 직접 입력하거나 수정할 수 없습니다.",
+            (Brush)Application.Current.Resources["Warn"]);
+    }
+
+    private void OnSessionIdPreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        e.Handled = true;
+        ShowSessionIdLockedNotice();
+    }
+
+    private void OnSessionIdPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        var isPasteOrCut = (e.KeyboardDevice.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0
+            && (e.Key == System.Windows.Input.Key.V || e.Key == System.Windows.Input.Key.X);
+        if (e.Key != System.Windows.Input.Key.Delete && e.Key != System.Windows.Input.Key.Back && !isPasteOrCut)
+            return;
+        e.Handled = true;
+        ShowSessionIdLockedNotice();
+    }
+
+    private void OnSessionIdPasting(object sender, DataObjectPastingEventArgs e)
+    {
+        e.CancelCommand();
+        ShowSessionIdLockedNotice();
+    }
+
     private void OnCompanySelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         var company = CompanyComboBox.SelectedItem as FacadeTargetCompany;
@@ -287,9 +328,18 @@ public partial class TransferSettingsWindow : Window
             return;
         LocalFolderTextBox.Text = dialog.FolderName;
         if (BatchModeCheckBox.IsChecked == true)
+        {
             ScanAndShowDetectedDirections(dialog.FolderName);
+        }
         else
+        {
+            // Non-batch: auto-sync 방향 콤보박스 to whatever this single folder's own name implies
+            // (같은 DirectionAliases 조회, 배치 모드의 하위 폴더 스캔과는 다르게 폴더 자체의 이름을
+            // 본다) -- 운영자가 폴더를 고를 때마다 방향을 수동으로 다시 맞출 필요 없게.
+            if (DirectionAliases.TryGetValue(Path.GetFileName(dialog.FolderName), out var canonical))
+                SyncLeftDirectionComboBox(canonical);
             RefreshReviewPanel();
+        }
     }
 
     private void OnDirectionSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -463,7 +513,7 @@ public partial class TransferSettingsWindow : Window
         _storageStatus = new FacadeStorageStatusService();
         _storageStatus.FeedbackReceived += OnStorageFeedback;
         _storageStatus.ResultReceived += OnStorageResult;
-        if (!_storageStatus.Start(DdsDomainId, FeedbackTopic, ResultTopic, CancelTopic, RequirementsTopic,
+        if (!_storageStatus.Start(DdsDomainId, FeedbackTopic, ResultTopic, CancelTopic, RequirementsTopic, FinalizeTopic,
                 _ddsHost, _ddsPort, _ddsLocalInterface))
         {
             StatusText.Text = "저장 상태 DDS 연결 실패 -- 진행률/완료 알림 없이 계속 진행합니다.";
@@ -630,9 +680,37 @@ public partial class TransferSettingsWindow : Window
             return;
         }
 
-        StatusText.Text = plan.Count > 1
-            ? $"전체 {plan.Count}개 방향 전송 완료 ({string.Join(", ", plan.Select(p => p.Direction))}). 저장 처리 대기 중..."
-            : "전송 완료. 저장 처리 대기 중...";
+        // 일괄 전송은 이미 상위 폴더 스캔 시점에 전체 방향 세트를 선언한 것이므로 팝업 없이 바로
+        // finalize -- 우연히 누적 카운트가 일치하길 기다리는 옛 자동완성 로직에 더 이상 의존하지
+        // 않는다(같은 테스트 건물을 여러 세션에 걸쳐 재사용하면서 누적 요구치가 실제 전송량과
+        // 어긋나는 버그를 실제로 겪었다). 단일 방향 전송은 운영자에게 "이게 전부인지" 직접
+        // 확인받는다 -- 아직 다른 방향을 더 보낼 계획이면 "아니오"로 대기 상태를 유지.
+        if (batchMode)
+        {
+            _storageStatus?.SendFinalize(company, building);
+            StatusText.Text = $"전체 {plan.Count}개 방향 전송 완료 ({string.Join(", ", plan.Select(p => p.Direction))}). 저장 처리 대기 중...";
+            EnterStorageWaitPhase(company, building);
+            return;
+        }
+
+        var isThisEverything = ThemedDialog.ShowConfirm(this, "전송 확인",
+            $"{building} 모든 면 전송을 완료하셨습니까?\n\n" +
+            "예: 지금까지 전송된 사진을 압축해 저장합니다.\n" +
+            "아니오: 아직 보낼 방향이 남아있으면 나중에 이어서 전송하세요.",
+            (Brush)Application.Current.Resources["Text2"]);
+        if (!isThisEverything)
+        {
+            StatusText.Text = "전송 완료. 다음 방향을 이어서 보내세요.";
+            _phase = Phase.Idle;
+            TransferButton.IsEnabled = true;
+            CancelButton.IsEnabled = false;
+            _storageStatus?.Dispose();
+            _storageStatus = null;
+            return;
+        }
+
+        _storageStatus?.SendFinalize(company, building);
+        StatusText.Text = "전송 완료. 저장 처리 대기 중...";
         EnterStorageWaitPhase(company, building);
     }
 
@@ -939,6 +1017,40 @@ public partial class TransferSettingsWindow : Window
             ResizeMode = ResizeMode.CanMinimize;
             return;
         }
+
+        // 사진 검토 숨기기:
+        // 오른쪽 검토 영역만 접고 왼쪽 설정 화면의 내용/폭/배치는 그대로 유지한다.
+        ReviewPanelBorder.Visibility = Visibility.Collapsed;
+        ReviewPanelColumn.Width = new GridLength(0);
+
+        MainSettingsColumn.Width = GridLength.Auto;
+        MainSettingsPanel.Width = 520;
+        MainSettingsPanel.HorizontalAlignment = HorizontalAlignment.Left;
+
+        ReviewPanelToggleButton.Content = "사진 검토 보기";
+
+        // 작은 창으로 돌아가기 전에 Normal 상태로 전환.
+        WindowState = WindowState.Normal;
+
+        // 작은 전송 창에서는 최대화 버튼을 숨긴다.
+        // CanMinimize: 최소화/닫기만 허용, 최대화 버튼은 비활성/제거되고
+        // 사용자가 창 테두리를 끌어 임의로 크게 만드는 것도 막는다.
+        ResizeMode = ResizeMode.CanMinimize;
+
+        // 기존 컴팩트 폭 유지.
+        Width = ReviewHiddenWindowWidth;
+
+        // 현재 모니터 작업영역보다 높지 않게 유지.
+        var workArea = SystemParameters.WorkArea;
+        Height = Math.Min(Height, workArea.Height);
+
+        // 고해상도 사진 전송 창을 현재 작업영역 중앙에 배치.
+        Left = workArea.Left + (workArea.Width - Width) / 2.0;
+        Top = workArea.Top + (workArea.Height - Height) / 2.0;
+    }
+
+    private void HideReviewPanel_Start()
+    {     
 
         // 사진 검토 숨기기:
         // 오른쪽 검토 영역만 접고 왼쪽 설정 화면의 내용/폭/배치는 그대로 유지한다.

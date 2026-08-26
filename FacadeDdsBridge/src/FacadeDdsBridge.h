@@ -53,10 +53,12 @@ FACADE_API void FacadeStorageStatus_SetCallbacks(void* handle, FacadeStorageFeed
         FacadeStorageResultCallback result_cb, void* user_data);
 FACADE_API bool FacadeStorageStatus_Start(void* handle, int domain_id, const char* feedback_topic,
         const char* result_topic, const char* cancel_topic, const char* requirements_topic,
-        const char* initial_peer_host, int initial_peer_port, const char* local_interface_ip);
+        const char* finalize_topic, const char* initial_peer_host, int initial_peer_port,
+        const char* local_interface_ip);
 FACADE_API void FacadeStorageStatus_Stop(void* handle);
 FACADE_API bool FacadeStorageStatus_SendCancelRequest(void* handle, const char* company, const char* building);
 FACADE_API bool FacadeStorageStatus_SendRequirements(void* handle, const char* company, const char* building,
         const char* required_directions_csv, const char* required_counts_csv);
+FACADE_API bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, const char* building);
 
 }

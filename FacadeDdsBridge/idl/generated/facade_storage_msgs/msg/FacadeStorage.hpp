@@ -1419,6 +1419,223 @@ private:
     int64_t m_requested_at_epoch_ms{0};
 
 };
+/*!
+ * @brief This class represents the structure FacadeStorageFinalizeRequest defined by the user in the IDL file.
+ * @ingroup FacadeStorage
+ */
+class FacadeStorageFinalizeRequest
+{
+public:
+
+    /*!
+     * @brief Default constructor.
+     */
+    eProsima_user_DllExport FacadeStorageFinalizeRequest()
+    {
+    }
+
+    /*!
+     * @brief Default destructor.
+     */
+    eProsima_user_DllExport ~FacadeStorageFinalizeRequest()
+    {
+    }
+
+    /*!
+     * @brief Copy constructor.
+     * @param x Reference to the object FacadeStorageFinalizeRequest that will be copied.
+     */
+    eProsima_user_DllExport FacadeStorageFinalizeRequest(
+            const FacadeStorageFinalizeRequest& x)
+    {
+                    m_company = x.m_company;
+
+                    m_building = x.m_building;
+
+                    m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+
+    }
+
+    /*!
+     * @brief Move constructor.
+     * @param x Reference to the object FacadeStorageFinalizeRequest that will be copied.
+     */
+    eProsima_user_DllExport FacadeStorageFinalizeRequest(
+            FacadeStorageFinalizeRequest&& x) noexcept
+    {
+        m_company = std::move(x.m_company);
+        m_building = std::move(x.m_building);
+        m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+    }
+
+    /*!
+     * @brief Copy assignment.
+     * @param x Reference to the object FacadeStorageFinalizeRequest that will be copied.
+     */
+    eProsima_user_DllExport FacadeStorageFinalizeRequest& operator =(
+            const FacadeStorageFinalizeRequest& x)
+    {
+
+                    m_company = x.m_company;
+
+                    m_building = x.m_building;
+
+                    m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+
+        return *this;
+    }
+
+    /*!
+     * @brief Move assignment.
+     * @param x Reference to the object FacadeStorageFinalizeRequest that will be copied.
+     */
+    eProsima_user_DllExport FacadeStorageFinalizeRequest& operator =(
+            FacadeStorageFinalizeRequest&& x) noexcept
+    {
+
+        m_company = std::move(x.m_company);
+        m_building = std::move(x.m_building);
+        m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+        return *this;
+    }
+
+    /*!
+     * @brief Comparison operator.
+     * @param x FacadeStorageFinalizeRequest object to compare.
+     */
+    eProsima_user_DllExport bool operator ==(
+            const FacadeStorageFinalizeRequest& x) const
+    {
+        return (m_company == x.m_company &&
+           m_building == x.m_building &&
+           m_requested_at_epoch_ms == x.m_requested_at_epoch_ms);
+    }
+
+    /*!
+     * @brief Comparison operator.
+     * @param x FacadeStorageFinalizeRequest object to compare.
+     */
+    eProsima_user_DllExport bool operator !=(
+            const FacadeStorageFinalizeRequest& x) const
+    {
+        return !(*this == x);
+    }
+
+    /*!
+     * @brief This function copies the value in member company
+     * @param _company New value to be copied in member company
+     */
+    eProsima_user_DllExport void company(
+            const std::string& _company)
+    {
+        m_company = _company;
+    }
+
+    /*!
+     * @brief This function moves the value in member company
+     * @param _company New value to be moved in member company
+     */
+    eProsima_user_DllExport void company(
+            std::string&& _company)
+    {
+        m_company = std::move(_company);
+    }
+
+    /*!
+     * @brief This function returns a constant reference to member company
+     * @return Constant reference to member company
+     */
+    eProsima_user_DllExport const std::string& company() const
+    {
+        return m_company;
+    }
+
+    /*!
+     * @brief This function returns a reference to member company
+     * @return Reference to member company
+     */
+    eProsima_user_DllExport std::string& company()
+    {
+        return m_company;
+    }
+
+
+    /*!
+     * @brief This function copies the value in member building
+     * @param _building New value to be copied in member building
+     */
+    eProsima_user_DllExport void building(
+            const std::string& _building)
+    {
+        m_building = _building;
+    }
+
+    /*!
+     * @brief This function moves the value in member building
+     * @param _building New value to be moved in member building
+     */
+    eProsima_user_DllExport void building(
+            std::string&& _building)
+    {
+        m_building = std::move(_building);
+    }
+
+    /*!
+     * @brief This function returns a constant reference to member building
+     * @return Constant reference to member building
+     */
+    eProsima_user_DllExport const std::string& building() const
+    {
+        return m_building;
+    }
+
+    /*!
+     * @brief This function returns a reference to member building
+     * @return Reference to member building
+     */
+    eProsima_user_DllExport std::string& building()
+    {
+        return m_building;
+    }
+
+
+    /*!
+     * @brief This function sets a value in member requested_at_epoch_ms
+     * @param _requested_at_epoch_ms New value for member requested_at_epoch_ms
+     */
+    eProsima_user_DllExport void requested_at_epoch_ms(
+            int64_t _requested_at_epoch_ms)
+    {
+        m_requested_at_epoch_ms = _requested_at_epoch_ms;
+    }
+
+    /*!
+     * @brief This function returns the value of member requested_at_epoch_ms
+     * @return Value of member requested_at_epoch_ms
+     */
+    eProsima_user_DllExport int64_t requested_at_epoch_ms() const
+    {
+        return m_requested_at_epoch_ms;
+    }
+
+    /*!
+     * @brief This function returns a reference to member requested_at_epoch_ms
+     * @return Reference to member requested_at_epoch_ms
+     */
+    eProsima_user_DllExport int64_t& requested_at_epoch_ms()
+    {
+        return m_requested_at_epoch_ms;
+    }
+
+
+
+private:
+
+    std::string m_company;
+    std::string m_building;
+    int64_t m_requested_at_epoch_ms{0};
+
+};
 
 } // namespace msg
 

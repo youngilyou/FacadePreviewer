@@ -80,11 +80,11 @@ void FacadeStorageStatus_SetCallbacks(void* handle, FacadeStorageFeedbackCallbac
 }
 
 bool FacadeStorageStatus_Start(void* handle, int domain_id, const char* feedback_topic, const char* result_topic,
-        const char* cancel_topic, const char* requirements_topic, const char* initial_peer_host,
-        int initial_peer_port, const char* local_interface_ip)
+        const char* cancel_topic, const char* requirements_topic, const char* finalize_topic,
+        const char* initial_peer_host, int initial_peer_port, const char* local_interface_ip)
 {
     return static_cast<FacadeStorageStatus*>(handle)->Start(domain_id, feedback_topic, result_topic, cancel_topic,
-            requirements_topic, initial_peer_host, initial_peer_port, local_interface_ip);
+            requirements_topic, finalize_topic, initial_peer_host, initial_peer_port, local_interface_ip);
 }
 
 void FacadeStorageStatus_Stop(void* handle)
@@ -102,6 +102,11 @@ bool FacadeStorageStatus_SendRequirements(void* handle, const char* company, con
 {
     return static_cast<FacadeStorageStatus*>(handle)->SendRequirements(company, building, required_directions_csv,
             required_counts_csv);
+}
+
+bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, const char* building)
+{
+    return static_cast<FacadeStorageStatus*>(handle)->SendFinalizeRequest(company, building);
 }
 
 }

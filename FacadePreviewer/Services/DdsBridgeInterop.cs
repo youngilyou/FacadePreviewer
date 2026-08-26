@@ -199,7 +199,7 @@ internal static class DdsBridgeInterop
     public static extern bool FacadeStorageStatus_Start(IntPtr handle, int domainId,
         [MarshalAs(UnmanagedType.LPStr)] string feedbackTopic, [MarshalAs(UnmanagedType.LPStr)] string resultTopic,
         [MarshalAs(UnmanagedType.LPStr)] string cancelTopic, [MarshalAs(UnmanagedType.LPStr)] string requirementsTopic,
-        [MarshalAs(UnmanagedType.LPStr)] string initialPeerHost,
+        [MarshalAs(UnmanagedType.LPStr)] string finalizeTopic, [MarshalAs(UnmanagedType.LPStr)] string initialPeerHost,
         int initialPeerPort, [MarshalAs(UnmanagedType.LPStr)] string localInterfaceIp);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -219,4 +219,9 @@ internal static class DdsBridgeInterop
         [MarshalAs(UnmanagedType.LPUTF8Str)] string company, [MarshalAs(UnmanagedType.LPUTF8Str)] string building,
         [MarshalAs(UnmanagedType.LPStr)] string requiredDirectionsCsv,
         [MarshalAs(UnmanagedType.LPStr)] string requiredCountsCsv);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool FacadeStorageStatus_SendFinalizeRequest(IntPtr handle,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string company, [MarshalAs(UnmanagedType.LPUTF8Str)] string building);
 }

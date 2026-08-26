@@ -1,0 +1,144 @@
+<Window x:Class="FacadePreviewer.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:FacadePreviewer.ViewModels"
+        Title="현장 로그인" WindowState="Maximized"
+        WindowStartupLocation="CenterScreen"
+        Background="#0A0E12">
+    <Window.Resources>
+        <!-- 로그인 화면 전용 브랜드 블루. 앱 나머지 화면의 Accent(오렌지)와는 별개
+             (CheckCrackViewer의 LoginWindow.xaml과 동일한 결정: 로그인 화면 목업의
+             파란색을 그대로 맞춘다). -->
+        <SolidColorBrush x:Key="LoginBlue" Color="#2E8FE0"/>
+
+        <Style x:Key="GlassTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="GlassPasswordBox" TargetType="PasswordBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="{TemplateBinding Background}">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 입력창을 감싸는 어두운 캡슐 (CheckCrackViewer의 InputCapsule과 동일한 스타일). -->
+        <Style x:Key="InputCapsule" TargetType="Border">
+            <Setter Property="Background" Value="#331A2028"/>
+            <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14,12"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#B9C2C7"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="2,0,0,6"/>
+        </Style>
+
+        <!-- placeholder 텍스트: 실제 입력이 없을 때만 보인다 (PasswordBox는 바인딩 자체가
+             안 되므로 code-behind PasswordChanged에서 직접 토글, Username은 바인딩 가능하니
+             DataTrigger로, 둘 다 별도 컨버터 없이 처리). -->
+        <Style x:Key="PlaceholderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#5A6570"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <!-- 전체화면 배경 사진 -->
+        <Image Source="/Assets/login_image.png" Stretch="UniformToFill"/>
+        <!-- 사진 위에서도 카드 글자가 항상 또렷하게 보이도록 얇은 어두운 스크림 -->
+        <Rectangle Fill="#4D0A0E12"/>
+
+        <!-- 중앙 유리 카드 -->
+        <Border Width="430" Padding="40,36" CornerRadius="18"
+                Background="#DC141A1E" BorderBrush="#33FFFFFF" BorderThickness="1"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.45" BlurRadius="40" ShadowDepth="12"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock Text="현장 로그인" Foreground="White" FontWeight="Bold" FontSize="26" Margin="0,0,0,6"/>
+                <TextBlock Text="FacadePreviewer에 접속합니다." Foreground="#9AA6B0" FontSize="13" Margin="0,0,0,28"/>
+
+                <TextBlock Text="사용자 ID" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputCapsule}" Margin="0,0,0,18">
+                    <Grid>
+                        <TextBox x:Name="UsernameInput" Style="{StaticResource GlassTextBox}"
+                                 Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="아이디를 입력하세요">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource PlaceholderText}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Username}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="비밀번호" Style="{StaticResource FieldLabel}"/>
+                <Border Style="{StaticResource InputCapsule}" Margin="0,0,0,20">
+                    <Grid>
+                        <PasswordBox x:Name="PasswordInput" Style="{StaticResource GlassPasswordBox}"
+                                     PasswordChanged="PasswordInput_PasswordChanged" KeyDown="PasswordInput_KeyDown"/>
+                        <TextBlock x:Name="PasswordPlaceholder" Text="비밀번호를 입력하세요" Style="{StaticResource PlaceholderText}"/>
+                    </Grid>
+                </Border>
+
+                <CheckBox Content="로그인 상태 유지" Foreground="#B9C2C7" FontSize="12.5"
+                          IsChecked="{Binding StayLoggedIn}" Margin="0,0,0,22"/>
+
+                <Button Content="로그인" Command="{Binding LoginCommand}" IsDefault="True"
+                        Background="{StaticResource LoginBlue}" Foreground="White" BorderThickness="0"
+                        FontWeight="Bold" FontSize="14.5" Padding="10,14" Cursor="Hand"/>
+
+                <TextBlock Text="{Binding StatusText}" Foreground="#FF8A6A" TextWrapping="Wrap" FontSize="12.5"
+                           Margin="0,16,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusText}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

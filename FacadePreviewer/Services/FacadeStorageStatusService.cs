@@ -54,17 +54,28 @@ public sealed class FacadeStorageStatusService : IDisposable
     /// <param name="initialPeerHost">Pass "" to fall back to FACADE_DDS_INITIAL_PEER env var.</param>
     /// <param name="localInterfaceIp">Pass "" to fall back to FACADE_DDS_INTERFACE_WHITELIST env var.</param>
     public bool Start(int domainId, string feedbackTopic, string resultTopic, string cancelTopic, string requirementsTopic,
-        string initialPeerHost = "", int initialPeerPort = 0, string localInterfaceIp = "")
+        string finalizeTopic, string initialPeerHost = "", int initialPeerPort = 0, string localInterfaceIp = "")
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return DdsBridgeInterop.FacadeStorageStatus_Start(_handle, domainId, feedbackTopic, resultTopic, cancelTopic,
-            requirementsTopic, initialPeerHost, initialPeerPort, localInterfaceIp);
+            requirementsTopic, finalizeTopic, initialPeerHost, initialPeerPort, localInterfaceIp);
     }
 
     public bool SendCancelRequest(string company, string building)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return DdsBridgeInterop.FacadeStorageStatus_SendCancelRequest(_handle, company, building);
+    }
+
+    /// <summary>Operator-confirmed "this is everything for this building" (Yes/No prompt after a
+    /// single-direction transfer) -- tells the server to archive whatever has been received so
+    /// far, bypassing SendRequirements' normal auto-complete-when-all-directions-arrive check.
+    /// See CrackVisionArchiveManager::finalize_now's own comment for why that check alone isn't
+    /// reliable across many separate sessions reusing the same (company, building).</summary>
+    public bool SendFinalize(string company, string building)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return DdsBridgeInterop.FacadeStorageStatus_SendFinalizeRequest(_handle, company, building);
     }
 
     /// <summary>Declares the expected direction set for (company, building) -- DDS-native

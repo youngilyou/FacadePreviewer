@@ -56,13 +56,21 @@ public:
     // pass nullptr/""/<=0 for initial_peer_host/initial_peer_port/local_interface_ip to fall
     // back to FACADE_DDS_INITIAL_PEER/FACADE_DDS_INTERFACE_WHITELIST.
     bool Start(int domain_id, const char* feedback_topic, const char* result_topic, const char* cancel_topic,
-            const char* requirements_topic, const char* initial_peer_host = nullptr, int initial_peer_port = 0,
-            const char* local_interface_ip = nullptr);
+            const char* requirements_topic, const char* finalize_topic, const char* initial_peer_host = nullptr,
+            int initial_peer_port = 0, const char* local_interface_ip = nullptr);
     void Stop();
 
     // Publishes a FacadeStorageCancelRequest for (company, building). No-op (returns false) if
     // Start() hasn't been called or failed.
     bool SendCancelRequest(const char* company, const char* building);
+
+    // Publishes a FacadeStorageFinalizeRequest for (company, building) -- the operator has
+    // confirmed "yes, this is everything" in FacadePreviewer's Yes/No prompt. Tells the server to
+    // archive whatever has been received so far, bypassing SendRequirements' normal
+    // auto-complete-when-all-directions-arrive check (see FacadeStorage.idl's own comment on why
+    // that check alone isn't reliable across many separate test/real sessions reusing the same
+    // building). No-op (returns false) if Start() hasn't been called or failed.
+    bool SendFinalizeRequest(const char* company, const char* building);
 
     // Publishes a FacadeStorageRequirements declaration for (company, building) -- DDS-native
     // replacement for the old HTTP POST api/crackvision/building-requirements call (see
