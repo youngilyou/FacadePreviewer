@@ -68,14 +68,16 @@ public partial class TransferSettingsWindow : Window
         ["기타면"] = "OTHER",
     };
 
-    // Fixed project-wide DDS convention (domain 0, plain topic names, no ROS2 "rt/" prefix) --
-    // matches app_config.h's facade_image_domain_id/facade_storage_*_topic defaults on the
-    // MngData side exactly; not something this dialog needs its own settings for.
+    // Fixed project-wide DDS convention (domain 0, ROS2 rmw_fastrtps-style "rt/" topic prefix,
+    // matching every other bridge in this project -- DDS Monitor flagged facade_storage_*/
+    // facade_image_* as the only topics missing it) -- matches app_config.h's
+    // facade_image_domain_id/facade_storage_*_topic defaults on the MngData side exactly; not
+    // something this dialog needs its own settings for.
     private const int DdsDomainId = 0;
-    private const string FeedbackTopic = "facade_storage_feedback";
-    private const string ResultTopic = "facade_storage_result";
-    private const string CancelTopic = "facade_storage_cancel_request";
-    private const string RequirementsTopic = "facade_storage_requirements";
+    private const string FeedbackTopic = "rt/facade_storage_feedback";
+    private const string ResultTopic = "rt/facade_storage_result";
+    private const string CancelTopic = "rt/facade_storage_cancel_request";
+    private const string RequirementsTopic = "rt/facade_storage_requirements";
 
     private enum Phase { Idle, Transferring, Storing }
     private enum RetryChoice { Restart, Resume, Abort }

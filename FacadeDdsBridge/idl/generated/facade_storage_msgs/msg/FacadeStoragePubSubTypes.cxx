@@ -38,7 +38,7 @@ namespace facade_storage_msgs {
 namespace msg {
 FacadeStorageFeedbackPubSubType::FacadeStorageFeedbackPubSubType()
 {
-    set_name("facade_storage_msgs::msg::FacadeStorageFeedback");
+    set_name("facade_storage_msgs::msg::dds_::FacadeStorageFeedback_");
     uint32_t type_size = facade_storage_msgs_msg_FacadeStorageFeedback_max_cdr_typesize;
     type_size += static_cast<uint32_t>(eprosima::fastcdr::Cdr::alignment(type_size, 4)); /* possible submessage alignment */
     max_serialized_type_size = type_size + 4; /*encapsulation*/
@@ -180,7 +180,7 @@ void FacadeStorageFeedbackPubSubType::register_type_object_representation()
 
 FacadeStorageResultPubSubType::FacadeStorageResultPubSubType()
 {
-    set_name("facade_storage_msgs::msg::FacadeStorageResult");
+    set_name("facade_storage_msgs::msg::dds_::FacadeStorageResult_");
     uint32_t type_size = facade_storage_msgs_msg_FacadeStorageResult_max_cdr_typesize;
     type_size += static_cast<uint32_t>(eprosima::fastcdr::Cdr::alignment(type_size, 4)); /* possible submessage alignment */
     max_serialized_type_size = type_size + 4; /*encapsulation*/
@@ -322,7 +322,7 @@ void FacadeStorageResultPubSubType::register_type_object_representation()
 
 FacadeStorageCancelRequestPubSubType::FacadeStorageCancelRequestPubSubType()
 {
-    set_name("facade_storage_msgs::msg::FacadeStorageCancelRequest");
+    set_name("facade_storage_msgs::msg::dds_::FacadeStorageCancelRequest_");
     uint32_t type_size = facade_storage_msgs_msg_FacadeStorageCancelRequest_max_cdr_typesize;
     type_size += static_cast<uint32_t>(eprosima::fastcdr::Cdr::alignment(type_size, 4)); /* possible submessage alignment */
     max_serialized_type_size = type_size + 4; /*encapsulation*/
@@ -464,7 +464,7 @@ void FacadeStorageCancelRequestPubSubType::register_type_object_representation()
 
 FacadeStorageRequirementsPubSubType::FacadeStorageRequirementsPubSubType()
 {
-    set_name("facade_storage_msgs::msg::FacadeStorageRequirements");
+    set_name("facade_storage_msgs::msg::dds_::FacadeStorageRequirements_");
     uint32_t type_size = facade_storage_msgs_msg_FacadeStorageRequirements_max_cdr_typesize;
     type_size += static_cast<uint32_t>(eprosima::fastcdr::Cdr::alignment(type_size, 4)); /* possible submessage alignment */
     max_serialized_type_size = type_size + 4; /*encapsulation*/
