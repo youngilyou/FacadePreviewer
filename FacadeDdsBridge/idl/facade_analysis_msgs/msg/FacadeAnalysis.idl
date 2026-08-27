@@ -1,0 +1,207 @@
+module facade_analysis_msgs {
+  module msg {
+
+    // Crack-inspection remote analysis dispatch/status protocol -- see
+    // https://github.com/youngilyou/AnalysisLoadBalancer README ("메시지 정의" section,
+    // 2026-08-27) for the full design discussion. Independent of facade_image_msgs/
+    // facade_storage_msgs -- separate topics, separate purpose (those two move per-image
+    // metadata and per-building archive-job status; this module moves the downstream
+    // "analyze this already-archived building" command/result chain), same
+    // non-source-sharing rule as those two modules. Vendored independently in
+    // FacadePreviewer, CheckCrackViewer, and AnalysisLoadBalancer (three separate
+    // codebases, generated with the same fastddsgen 4.0.6 jar used everywhere else in
+    // this project to avoid the ExtensibilityKind mismatch class of bug already hit once
+    // with map2stitch_msgs::VideoTsPacket -- see FacadeDdsBridge/CMakeLists.txt's own
+    // comment on that incident).
+    //
+    // Generated with -typeros2 (added 2026-08-27, matches the convention already used for
+    // map2stitch_msgs::VideoTsPacket/ImageSensorFrame elsewhere in this project): the C++
+    // class names/namespace stay plain (facade_analysis_msgs::msg::AnalysisDispatchRequest,
+    // no dds_ wrapper -- verified byte-identical .hpp before/after), but the DDS wire type
+    // name registered via set_name() becomes "facade_analysis_msgs::msg::dds_::
+    // AnalysisDispatchRequest_" and extensibility switches from APPENDABLE (DELIMIT_CDR2) to
+    // FINAL (PLAIN_CDR2). All three copies were regenerated from this same .idl and copied
+    // byte-for-byte -- do not hand-edit only one side, they must stay identical for DDS
+    // endpoint matching to keep working.
+    //
+    // Correlation key throughout is archive_id (matches facade_storage_msgs::
+    // FacadeStorageResult.archive_id -- the archive must already exist and be recorded
+    // before an analysis can be dispatched for it). RELIABLE for every discrete
+    // command/result; BEST_EFFORT only for the two periodic progress-only messages
+    // (WorkerHeartbeat, AnalysisStatusUpdate) -- same convention as facade_storage_msgs.
+    //
+    // Domain layout (DDS-Router/config/ddsrouter/crack_inspection_analysis.yaml):
+    // FacadePreviewer and AnalysisLoadBalancer talk on domain 30
+    // (FacadePreviewerDomainParticipant); AnalysisLoadBalancer and CheckCrackViewer
+    // (the "worker") talk on domain 31 (CheckCrackViewerDomainParticipant). Section C
+    // below (FacadePreviewer <-> the assigned worker directly) actually needs BOTH
+    // sides reachable on the same bridge -- see the DDS-Router yaml's bidirectional
+    // routes between the two domains; the AnalysisLoadBalancer does not intercept
+    // Section C traffic even though it is a participant on both domains.
+
+    // ===================================================================
+    // A) FacadePreviewer <-> AnalysisLoadBalancer
+    // ===================================================================
+
+    // FacadePreviewer -> AnalysisLoadBalancer. Sent once the operator confirms
+    // FacadeStorageResult.success == TRUE and clicks "분석 시작". RELIABLE -- a lost
+    // dispatch request means the building silently never gets analyzed, with no error
+    // surfaced anywhere.
+    struct AnalysisDispatchRequest {
+      long long archive_id;
+      string company;
+      string building;
+      sequence<string> directions;
+      unsigned long image_count;
+      string zip_remote_path;          // SFTP absolute path on the archive host
+      unsigned long long size_bytes;
+      long long requested_at_epoch_ms;
+    };
+
+    // AnalysisLoadBalancer -> FacadePreviewer. Informational only -- lets the operator's
+    // UI show e.g. "Worker-3 배정됨" instead of just a spinner. RELIABLE.
+    struct AnalysisDispatched {
+      long long archive_id;
+      string assigned_worker_id;
+      long long assigned_at_epoch_ms;
+    };
+
+    // AnalysisLoadBalancer -> FacadePreviewer. Sent instead of AnalysisDispatched when no
+    // worker can take the job right now. RELIABLE. `reason` is one of "ALL_WORKERS_FULL"
+    // (every known worker's queue is already at the global cap) or "NO_WORKER_ONLINE"
+    // (no WorkerHeartbeat has been seen recently enough from anyone, see
+    // AnalysisLoadBalancer README "워커 목록 확보 방식" -- 15s since last heartbeat).
+    struct AnalysisDispatchFailed {
+      long long archive_id;
+      string reason;
+    };
+
+    // ===================================================================
+    // B) AnalysisLoadBalancer <-> CheckCrackViewer (worker)
+    // ===================================================================
+
+    // CheckCrackViewer -> AnalysisLoadBalancer. Published every 5s regardless of whether
+    // anything changed -- doubles as both load-reporting and liveness/registration (see
+    // README "워커 목록 확보 방식": a worker_id not seen before is auto-registered on its
+    // first heartbeat, no separate enrollment step). BEST_EFFORT -- losing one update is
+    // harmless, the next one (5s later) supersedes it, same convention as
+    // facade_storage_msgs::FacadeStorageFeedback.
+    struct WorkerHeartbeat {
+      string worker_id;
+      unsigned long max_concurrent;    // GPU detected -> 5, CPU-only -> 1 (see README)
+      unsigned long running_count;     // manual (local "실행" button) + remote combined
+      unsigned long queued_count;
+      long long updated_at_epoch_ms;
+    };
+
+    // AnalysisLoadBalancer -> CheckCrackViewer, published to ALL workers (DDS has no
+    // native unicast-to-one-subscriber primitive on this bridge) -- each worker checks
+    // target_worker_id against its own worker_id and ignores anything not addressed to
+    // it. Traffic volume here is low (one message per dispatched job), so this app-level
+    // filter is simpler than wiring a DDS-Router content-filter route for it.
+    struct AnalysisAssignment {
+      long long archive_id;
+      string company;
+      string building;
+      sequence<string> directions;
+      unsigned long image_count;
+      string zip_remote_path;
+      unsigned long long size_bytes;
+      string target_worker_id;
+      long long assigned_at_epoch_ms;
+    };
+
+    // ===================================================================
+    // C) FacadePreviewer <-> the assigned CheckCrackViewer, DIRECT (AnalysisLoadBalancer
+    //    does not see or relay any of these -- it only makes the initial assignment
+    //    decision in section B, see the module header comment above)
+    // ===================================================================
+
+    // worker -> FacadePreviewer. Sent once, immediately after an AnalysisAssignment is
+    // accepted -- started_immediately is FALSE if the worker was already at
+    // max_concurrent and this job went straight into its local queue instead (followed
+    // later by AnalysisJobStarted once a slot frees up). RELIABLE.
+    struct AnalysisJobAccepted {
+      long long archive_id;
+      string worker_id;
+      boolean started_immediately;
+    };
+
+    // worker -> FacadePreviewer. Sent instead of/alongside AnalysisJobAccepted when the
+    // job is queued locally (started_immediately == FALSE case). RELIABLE.
+    struct AnalysisJobQueued {
+      long long archive_id;
+      string worker_id;
+      unsigned long queue_position;
+    };
+
+    // worker -> FacadePreviewer. Sent once, the moment a previously-queued job actually
+    // starts running (a local slot freed up). Never sent for jobs that started
+    // immediately -- AnalysisJobAccepted(started_immediately=TRUE) already covers that
+    // case. RELIABLE.
+    struct AnalysisJobStarted {
+      long long archive_id;
+      string worker_id;
+    };
+
+    // worker -> FacadePreviewer, periodic. `stage` extends CheckCrackV2's existing
+    // pipeline.log stage vocabulary (see PipelineLogEntry.cs / runner.py's log_event
+    // calls -- METADATA_PARSED, STITCHED, COLMAP_FALLBACK, etc.) with the new stages that
+    // happen BEFORE the existing pipeline starts: DOWNLOAD_START, DOWNLOADING,
+    // EXTRACT_START, EXTRACT_DONE, ANALYSIS_START. `progress` is a free-form string
+    // (e.g. "5/20") matching PipelineLogEntry.Progress's existing shape, not a separate
+    // numeric pair -- deliberately kept in the same format the operator UI already knows
+    // how to render. BEST_EFFORT -- losing one update is harmless, the next supersedes it.
+    struct AnalysisStatusUpdate {
+      long long archive_id;
+      string worker_id;
+      string stage;
+      string progress;
+      long long updated_at_epoch_ms;
+    };
+
+    // worker -> FacadePreviewer. Sent whenever any stage fails (download, extract, or
+    // the underlying pipeline itself). RELIABLE -- this is what puts the "재시도"/"정지"
+    // choice in front of the field operator (see AnalysisLoadBalancer README "재시도/실패
+    // 처리": the field operator sees this and decides, they don't otherwise watch
+    // progress).
+    struct AnalysisErrorNotify {
+      long long archive_id;
+      string worker_id;
+      string stage;
+      string error_message;
+      long long occurred_at_epoch_ms;
+    };
+
+    // FacadePreviewer -> worker. Sent only after the operator has seen an
+    // AnalysisErrorNotify and chosen "재시도". Routed by archive_id, not worker_id --
+    // whichever worker is (still) tracking that archive_id acts on it, others ignore it.
+    // RELIABLE.
+    struct AnalysisRetryRequest {
+      long long archive_id;
+      long long requested_at_epoch_ms;
+    };
+
+    // FacadePreviewer -> worker. Sent only after the operator has seen an
+    // AnalysisErrorNotify and chosen "정지" -- NOT a general-purpose "cancel a healthy
+    // running job because it's taking too long" control (that need was explicitly ruled
+    // out, see README "취소 필요 여부": long processing time is fine, this is
+    // failure-recovery only). RELIABLE.
+    struct AnalysisStopRequest {
+      long long archive_id;
+      long long requested_at_epoch_ms;
+    };
+
+    // worker -> FacadePreviewer. Sent exactly once when a job finishes, successfully or
+    // not. Deliberately minimal -- detailed results (crack count, report, mosaic
+    // previews) are reviewed locally on the CheckCrackViewer workstation ("사무실"), not
+    // pushed back to the field operator's FacadePreviewer. RELIABLE.
+    struct AnalysisResult {
+      long long archive_id;
+      string worker_id;
+      boolean success;
+      long long completed_at_epoch_ms;
+    };
+
+  };
+};

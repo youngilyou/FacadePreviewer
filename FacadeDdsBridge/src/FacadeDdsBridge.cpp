@@ -109,4 +109,53 @@ bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, 
     return static_cast<FacadeStorageStatus*>(handle)->SendFinalizeRequest(company, building);
 }
 
+void* AnalysisCommand_Create()
+{
+    return new AnalysisCommandBridge();
+}
+
+void AnalysisCommand_Destroy(void* handle)
+{
+    delete static_cast<AnalysisCommandBridge*>(handle);
+}
+
+void AnalysisCommand_SetCallbacks(void* handle, AnalysisDispatchedCallback dispatchedCb,
+        AnalysisDispatchFailedCallback dispatchFailedCb, AnalysisJobAcceptedCallback jobAcceptedCb,
+        AnalysisJobQueuedCallback jobQueuedCb, AnalysisJobStartedCallback jobStartedCb,
+        AnalysisStatusUpdateCallback statusUpdateCb, AnalysisErrorNotifyCallback errorNotifyCb,
+        AnalysisResultCallback resultCb, void* userData)
+{
+    static_cast<AnalysisCommandBridge*>(handle)->SetCallbacks(dispatchedCb, dispatchFailedCb, jobAcceptedCb,
+            jobQueuedCb, jobStartedCb, statusUpdateCb, errorNotifyCb, resultCb, userData);
+}
+
+bool AnalysisCommand_Start(void* handle, int domainId, const char* topicPrefix, const char* initialPeerHost,
+        int initialPeerPort, const char* localInterfaceIp)
+{
+    return static_cast<AnalysisCommandBridge*>(handle)->Start(domainId, topicPrefix, initialPeerHost,
+            initialPeerPort, localInterfaceIp);
+}
+
+void AnalysisCommand_Stop(void* handle)
+{
+    static_cast<AnalysisCommandBridge*>(handle)->Stop();
+}
+
+bool AnalysisCommand_SendDispatchRequest(void* handle, int64_t archiveId, const char* company, const char* building,
+        const char* directionsCsv, uint32_t imageCount, const char* zipRemotePath, uint64_t sizeBytes)
+{
+    return static_cast<AnalysisCommandBridge*>(handle)->SendDispatchRequest(archiveId, company, building,
+            directionsCsv, imageCount, zipRemotePath, sizeBytes);
+}
+
+bool AnalysisCommand_SendRetryRequest(void* handle, int64_t archiveId)
+{
+    return static_cast<AnalysisCommandBridge*>(handle)->SendRetryRequest(archiveId);
+}
+
+bool AnalysisCommand_SendStopRequest(void* handle, int64_t archiveId)
+{
+    return static_cast<AnalysisCommandBridge*>(handle)->SendStopRequest(archiveId);
+}
+
 }

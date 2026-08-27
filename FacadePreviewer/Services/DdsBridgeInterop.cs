@@ -224,4 +224,76 @@ internal static class DdsBridgeInterop
     [return: MarshalAs(UnmanagedType.I1)]
     public static extern bool FacadeStorageStatus_SendFinalizeRequest(IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string company, [MarshalAs(UnmanagedType.LPUTF8Str)] string building);
+
+    // facade_analysis_msgs crack-inspection remote analysis dispatch (domain 30, see
+    // AnalysisCommandBridge.h) -- independent handle/lifecycle from everything above.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisDispatchedData { public long ArchiveId; public IntPtr AssignedWorkerId; public long AssignedAtEpochMs; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisDispatchFailedData { public long ArchiveId; public IntPtr Reason; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisJobAcceptedData { public long ArchiveId; public IntPtr WorkerId; [MarshalAs(UnmanagedType.I1)] public bool StartedImmediately; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisJobQueuedData { public long ArchiveId; public IntPtr WorkerId; public uint QueuePosition; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisJobStartedData { public long ArchiveId; public IntPtr WorkerId; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisStatusUpdateData { public long ArchiveId; public IntPtr WorkerId; public IntPtr Stage; public IntPtr Progress; public long UpdatedAtEpochMs; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisErrorNotifyData { public long ArchiveId; public IntPtr WorkerId; public IntPtr Stage; public IntPtr ErrorMessage; public long OccurredAtEpochMs; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct AnalysisResultData { public long ArchiveId; public IntPtr WorkerId; [MarshalAs(UnmanagedType.I1)] public bool Success; public long CompletedAtEpochMs; }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisDispatchedCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisDispatchFailedCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisJobAcceptedCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisJobQueuedCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisJobStartedCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisStatusUpdateCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisErrorNotifyCallback(IntPtr ptr, IntPtr userData);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] public delegate void AnalysisResultCallback(IntPtr ptr, IntPtr userData);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr AnalysisCommand_Create();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void AnalysisCommand_Destroy(IntPtr handle);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void AnalysisCommand_SetCallbacks(IntPtr handle, AnalysisDispatchedCallback dispatchedCb,
+        AnalysisDispatchFailedCallback dispatchFailedCb, AnalysisJobAcceptedCallback jobAcceptedCb,
+        AnalysisJobQueuedCallback jobQueuedCb, AnalysisJobStartedCallback jobStartedCb,
+        AnalysisStatusUpdateCallback statusUpdateCb, AnalysisErrorNotifyCallback errorNotifyCb,
+        AnalysisResultCallback resultCb, IntPtr userData);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool AnalysisCommand_Start(IntPtr handle, int domainId,
+        [MarshalAs(UnmanagedType.LPStr)] string topicPrefix, [MarshalAs(UnmanagedType.LPStr)] string initialPeerHost,
+        int initialPeerPort, [MarshalAs(UnmanagedType.LPStr)] string localInterfaceIp);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void AnalysisCommand_Stop(IntPtr handle);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool AnalysisCommand_SendDispatchRequest(IntPtr handle, long archiveId,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string company, [MarshalAs(UnmanagedType.LPUTF8Str)] string building,
+        [MarshalAs(UnmanagedType.LPStr)] string directionsCsv, uint imageCount,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string zipRemotePath, ulong sizeBytes);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool AnalysisCommand_SendRetryRequest(IntPtr handle, long archiveId);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    public static extern bool AnalysisCommand_SendStopRequest(IntPtr handle, long archiveId);
 }

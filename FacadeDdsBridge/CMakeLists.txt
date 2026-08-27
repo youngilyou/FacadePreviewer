@@ -76,6 +76,7 @@ endif()
 
 set(GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/idl/generated/map2stitch_msgs/msg")
 set(STORAGE_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/idl/generated/facade_storage_msgs/msg")
+set(ANALYSIS_GENERATED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/idl/generated/facade_analysis_msgs/msg")
 
 add_subdirectory(thirdparty/libmpeg)
 
@@ -88,6 +89,8 @@ add_library(FacadeDdsBridge SHARED
     src/VideoDecoder.cpp
     src/FacadeStorageStatus.h
     src/FacadeStorageStatus.cpp
+    src/AnalysisCommandBridge.h
+    src/AnalysisCommandBridge.cpp
     src/FacadeDdsBridge.h
     src/FacadeDdsBridge.cpp
     src/RsyncTransfer.h
@@ -106,9 +109,16 @@ add_library(FacadeDdsBridge SHARED
     ${STORAGE_GENERATED_DIR}/FacadeStoragePubSubTypes.cxx
     ${STORAGE_GENERATED_DIR}/FacadeStorageCdrAux.ipp
     ${STORAGE_GENERATED_DIR}/FacadeStorageTypeObjectSupport.cxx
+    # facade_analysis_msgs: crack-inspection remote analysis dispatch/status protocol -- see
+    # idl/facade_analysis_msgs/msg/FacadeAnalysis.idl's header comment. Generated with fastddsgen
+    # 4.0.6 and byte-for-byte identical to CheckCrackDdsBridge's copy (2026-08-27 session,
+    # AnalysisLoadBalancer README).
+    ${ANALYSIS_GENERATED_DIR}/FacadeAnalysisPubSubTypes.cxx
+    ${ANALYSIS_GENERATED_DIR}/FacadeAnalysisCdrAux.ipp
+    ${ANALYSIS_GENERATED_DIR}/FacadeAnalysisTypeObjectSupport.cxx
 )
-target_include_directories(FacadeDdsBridge PRIVATE src ${GENERATED_DIR} ${STORAGE_GENERATED_DIR} "${FFMPEG_DEV_ROOT}/include"
-    "${FASTDDS_ROOT}/include"
+target_include_directories(FacadeDdsBridge PRIVATE src ${GENERATED_DIR} ${STORAGE_GENERATED_DIR} ${ANALYSIS_GENERATED_DIR}
+    "${FFMPEG_DEV_ROOT}/include" "${FASTDDS_ROOT}/include"
 )
 # FastDDS/fastcdr headers carry MSVC autolink pragmas that request "libfastcdr-2.3.lib" (the
 # alternate name vcpkg-style ports also ship alongside "fastcdr-2.3.lib" in this vendored

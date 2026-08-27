@@ -89,6 +89,14 @@ public partial class TransferSettingsWindow : Window
 
     private RsyncTransferService? _transfer;
     private FacadeStorageStatusService? _storageStatus;
+    // facade_analysis_msgs (domain 30) -- long-lived for this window's whole lifetime, unlike
+    // _storageStatus (recreated per transfer): "분석 시작"/재시도/정지 can happen well after the
+    // triggering transfer's own storage-status handle has already been disposed. Only one
+    // archive_id is tracked at a time (same simplification _pendingCompany/_pendingBuilding
+    // already accepts for storage status) -- starting a new analysis for a different archive
+    // replaces tracking of the previous one.
+    private AnalysisCommandService? _analysisCommand;
+    private long? _pendingAnalysisArchiveId;
     private List<(string Direction, string LocalFolder)>? _detectedBatch;
     private Phase _phase = Phase.Idle;
     private string _pendingCompany = "";
@@ -143,6 +151,21 @@ public partial class TransferSettingsWindow : Window
         _ddsHost = ddsHost;
         _ddsPort = ddsPort;
         _ddsLocalInterface = ddsLocalInterface;
+
+        // facade_analysis_msgs on domain 30 -- a different participant/domain from the domain-0
+        // one _storageStatus uses per-transfer, so it's started once here for the window's whole
+        // lifetime instead. initialPeerPort 0 lets the native side compute domain 30's own
+        // default port (7400+250*30+10) rather than reusing _ddsPort, which is domain 0's.
+        _analysisCommand = new AnalysisCommandService();
+        _analysisCommand.Dispatched += OnAnalysisDispatched;
+        _analysisCommand.DispatchFailed += OnAnalysisDispatchFailed;
+        _analysisCommand.JobAccepted += OnAnalysisJobAccepted;
+        _analysisCommand.JobQueued += OnAnalysisJobQueued;
+        _analysisCommand.JobStarted += OnAnalysisJobStarted;
+        _analysisCommand.StatusUpdate += OnAnalysisStatusUpdate;
+        _analysisCommand.ErrorNotify += OnAnalysisErrorNotify;
+        _analysisCommand.ResultReceived += OnAnalysisResult;
+        _analysisCommand.Start(domainId: 30, initialPeerHost: _ddsHost, localInterfaceIp: _ddsLocalInterface);
 
         // Default session id: today's date -- operator can change it, but this matches the
         // existing capture-folder naming convention (<측정장소>_yyyyMMdd_HHmmss) closely enough
@@ -938,6 +961,24 @@ public partial class TransferSettingsWindow : Window
                     $"{result.Company} / {result.Building} 저장이 완료되었습니다.\n\n" +
                     $"이미지: {result.ImageCount}장\n압축 파일 크기: {mb:F1} MB\n경로: {result.ZipPath}\nArchive ID: {result.ArchiveId}",
                     (Brush)Application.Current.Resources["Good"]);
+
+                // 분석 시작 -- archive_id는 방금 받은 FacadeStorageResult에서 확보(도메인 0),
+                // 명령 자체는 도메인 30(AnalysisCommandBridge)으로 보냄. directions_csv는
+                // FacadeStorageResult에 없어서("" 전달) CheckCrackViewer 쪽 등록은 압축 해제 후
+                // 실제 하위 폴더를 스캔해서 결정하므로 값이 없어도 등록 자체엔 영향 없음(원격
+                // 분석 작업 창의 표시용 컬럼에만 씀) -- AnalysisCommandBridge.h의 SendDispatchRequest
+                // 주석 참고.
+                if (ThemedDialog.ShowConfirm(this, "분석 시작",
+                        $"{result.Company} / {result.Building} (Archive ID: {result.ArchiveId})에 대해 지금 분석을 시작하시겠습니까?",
+                        (Brush)Application.Current.Resources["Text2"]))
+                {
+                    _pendingAnalysisArchiveId = result.ArchiveId;
+                    var sent = _analysisCommand?.SendDispatchRequest(result.ArchiveId, result.Company, result.Building,
+                        "", result.ImageCount, result.ZipPath, result.SizeBytes) ?? false;
+                    StatusText.Text = sent
+                        ? $"분석 요청 전송됨 (Archive ID: {result.ArchiveId})"
+                        : "분석 요청 전송 실패 -- DDS 연결을 확인하세요.";
+                }
             }
             else
             {
@@ -946,6 +987,92 @@ public partial class TransferSettingsWindow : Window
                     $"저장 처리 중 오류가 발생했습니다.\n\n{result.ErrorMessage}",
                     (Brush)Application.Current.Resources["Accent"]);
             }
+        });
+    }
+
+    // === facade_analysis_msgs (domain 30) event handlers -- all filtered to
+    // _pendingAnalysisArchiveId, same "only the job THIS window is tracking" discipline
+    // OnStorageResult already applies via _pendingCompany/_pendingBuilding. 원격 운용자(현장,
+    // 이 창)는 명령을 보내고 에러가 나면 재시도/정지만 결정하면 됨 -- 정상 진행 중인 상태 표시는
+    // 참고용일 뿐 별도 조작이 필요 없음(AnalysisLoadBalancer README "취소 필요 여부" 참고).
+
+    private void OnAnalysisDispatched(AnalysisDispatched d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() => StatusText.Text = $"분석 배정됨: worker={d.AssignedWorkerId} (Archive ID: {d.ArchiveId})");
+    }
+
+    private void OnAnalysisDispatchFailed(AnalysisDispatchFailed d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            StatusText.Text = $"분석 배정 실패: {d.Reason} (Archive ID: {d.ArchiveId})";
+            ThemedDialog.ShowInfo(this, "분석 배정 실패",
+                $"분석 작업을 배정할 워크스테이션을 찾지 못했습니다.\n\n사유: {d.Reason}",
+                (Brush)Application.Current.Resources["Accent"]);
+        });
+    }
+
+    private void OnAnalysisJobAccepted(AnalysisJobAccepted d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() => StatusText.Text =
+            $"분석 시작됨: worker={d.WorkerId} (Archive ID: {d.ArchiveId})");
+    }
+
+    private void OnAnalysisJobQueued(AnalysisJobQueued d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() => StatusText.Text =
+            $"분석 대기 중: worker={d.WorkerId}, 대기 순번={d.QueuePosition} (Archive ID: {d.ArchiveId})");
+    }
+
+    private void OnAnalysisJobStarted(AnalysisJobStarted d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() => StatusText.Text = $"분석 시작됨 (대기열에서): worker={d.WorkerId} (Archive ID: {d.ArchiveId})");
+    }
+
+    private void OnAnalysisStatusUpdate(AnalysisStatusUpdate d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() => StatusText.Text =
+            $"분석 진행 중: {d.Stage} {d.Progress} (worker={d.WorkerId}, Archive ID: {d.ArchiveId})");
+    }
+
+    // 에러 발생 시 이곳이 유일하게 운용자 조작(재시도/정지)이 필요한 지점 -- 정상 진행 중엔
+    // StatusUpdate만 참고용으로 표시되고 별도 조작 없음.
+    private void OnAnalysisErrorNotify(AnalysisErrorNotify d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            StatusText.Text = $"분석 오류: {d.Stage} -- {d.ErrorMessage} (Archive ID: {d.ArchiveId})";
+            var choice = ThemedDialog.Show(this, "분석 오류",
+                $"분석 중 오류가 발생했습니다.\n\n단계: {d.Stage}\n내용: {d.ErrorMessage}\n\n재시도하시겠습니까, 정지하시겠습니까?",
+                (Brush)Application.Current.Resources["Accent"],
+                ("retry", "재시도", true), ("stop", "정지", false));
+            if (choice == "retry")
+                _analysisCommand?.SendRetryRequest(d.ArchiveId);
+            else if (choice == "stop")
+                _analysisCommand?.SendStopRequest(d.ArchiveId);
+        });
+    }
+
+    private void OnAnalysisResult(AnalysisResult d)
+    {
+        if (d.ArchiveId != _pendingAnalysisArchiveId) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            StatusText.Text = d.Success
+                ? $"분석 완료: worker={d.WorkerId} (Archive ID: {d.ArchiveId}) -- 결과는 사무실에서 확인하세요."
+                : $"분석 실패: worker={d.WorkerId} (Archive ID: {d.ArchiveId})";
+            ThemedDialog.ShowInfo(this, d.Success ? "분석 완료" : "분석 실패",
+                d.Success
+                    ? $"Archive ID {d.ArchiveId}의 분석이 완료되었습니다.\n상세 결과는 사무실 CheckCrackViewer 화면에서 확인하세요."
+                    : $"Archive ID {d.ArchiveId}의 분석이 실패했습니다.",
+                (Brush)Application.Current.Resources[d.Success ? "Good" : "Accent"]);
         });
     }
 
@@ -1472,6 +1599,8 @@ public partial class TransferSettingsWindow : Window
         _transfer = null;
         _storageStatus?.Dispose();
         _storageStatus = null;
+        _analysisCommand?.Dispose();
+        _analysisCommand = null;
         _thumbnailLoadCts?.Cancel();
         CleanupStagingFolders();
         base.OnClosed(e);

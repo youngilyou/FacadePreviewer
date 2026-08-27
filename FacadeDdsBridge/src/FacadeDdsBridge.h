@@ -7,6 +7,7 @@
 #include "DdsFrameSubscriber.h"
 #include "RsyncTransfer.h"
 #include "FacadeStorageStatus.h"
+#include "AnalysisCommandBridge.h"
 
 extern "C" {
 
@@ -60,5 +61,23 @@ FACADE_API bool FacadeStorageStatus_SendCancelRequest(void* handle, const char* 
 FACADE_API bool FacadeStorageStatus_SendRequirements(void* handle, const char* company, const char* building,
         const char* required_directions_csv, const char* required_counts_csv);
 FACADE_API bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, const char* building);
+
+// facade_analysis_msgs crack-inspection remote analysis dispatch (domain 30, see
+// AnalysisCommandBridge.h) -- independent of all handles above (own participant, own lifecycle).
+FACADE_API void* AnalysisCommand_Create();
+FACADE_API void AnalysisCommand_Destroy(void* handle);
+FACADE_API void AnalysisCommand_SetCallbacks(void* handle, AnalysisDispatchedCallback dispatchedCb,
+        AnalysisDispatchFailedCallback dispatchFailedCb, AnalysisJobAcceptedCallback jobAcceptedCb,
+        AnalysisJobQueuedCallback jobQueuedCb, AnalysisJobStartedCallback jobStartedCb,
+        AnalysisStatusUpdateCallback statusUpdateCb, AnalysisErrorNotifyCallback errorNotifyCb,
+        AnalysisResultCallback resultCb, void* userData);
+FACADE_API bool AnalysisCommand_Start(void* handle, int domainId, const char* topicPrefix,
+        const char* initialPeerHost, int initialPeerPort, const char* localInterfaceIp);
+FACADE_API void AnalysisCommand_Stop(void* handle);
+FACADE_API bool AnalysisCommand_SendDispatchRequest(void* handle, int64_t archiveId, const char* company,
+        const char* building, const char* directionsCsv, uint32_t imageCount, const char* zipRemotePath,
+        uint64_t sizeBytes);
+FACADE_API bool AnalysisCommand_SendRetryRequest(void* handle, int64_t archiveId);
+FACADE_API bool AnalysisCommand_SendStopRequest(void* handle, int64_t archiveId);
 
 }
