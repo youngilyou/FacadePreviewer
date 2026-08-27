@@ -41,7 +41,7 @@ FACADE_API void* FacadeRsync_Create();
 FACADE_API void FacadeRsync_Destroy(void* handle);
 FACADE_API bool FacadeRsync_Start(void* handle, const wchar_t* rsync_exe_path, const wchar_t* local_source_dir,
         const char* ssh_user, const char* ssh_host, int ssh_port, const wchar_t* ssh_key_path,
-        const char* remote_dest_root, bool resume, FacadeRsyncProgressCallback progress_cb,
+        const wchar_t* ssh_password, const char* remote_dest_root, bool resume, FacadeRsyncProgressCallback progress_cb,
         FacadeRsyncCompleteCallback complete_cb, void* user_data);
 FACADE_API void FacadeRsync_Cancel(void* handle);
 

@@ -70,6 +70,19 @@
                 <Button Grid.Column="2" Content="찾아보기..." Click="OnBrowseSshKey"/>
             </Grid>
 
+            <!-- 2026-08-27: SSH 키가 없으면 Password로 인증(sshpass). 키가 있으면 키가 항상
+                 우선(RsyncTransfer.cpp Start()와 동일한 우선순위). -->
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="SSH Password" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                <PasswordBox x:Name="SshPasswordBox" Grid.Column="1" Padding="6,4"
+                             Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
+                             ToolTip="SSH 키가 비어있을 때만 사용됩니다 (키가 있으면 키가 우선)."/>
+            </Grid>
+
             <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="90"/>

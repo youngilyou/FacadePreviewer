@@ -37,6 +37,9 @@ public sealed class RsyncTransferService : IDisposable
     /// responsible for that layout (see MainViewModel's session folder helpers), this service
     /// only pushes whatever is already there.</param>
     /// <param name="sshKeyPath">Empty string to use ssh's own default key discovery.</param>
+    /// <param name="sshPassword">2026-08-27: only consulted when sshKeyPath is empty (key always
+    /// wins) -- non-interactive password auth via sshpass, see RsyncTransfer.h's Start() doc
+    /// comment. Pass empty string for the original key-only/default-discovery behavior.</param>
     /// <param name="remoteDestRoot">DDS-Router host's FacadeImageBridge watch root (absolute
     /// Linux path, e.g. "/srv/facade_images").</param>
     /// <param name="resume">false re-runs plain rsync (already-complete files are still skipped
@@ -45,11 +48,11 @@ public sealed class RsyncTransferService : IDisposable
     /// it left off instead -- see RsyncTransfer.h's Start() doc comment. Exposed as an explicit
     /// operator choice ("처음부터 전송" vs "이어서 전송") after a transfer failure.</param>
     public bool Start(string rsyncExePath, string localSourceDir, string sshUser, string sshHost, int sshPort,
-        string sshKeyPath, string remoteDestRoot, bool resume = false)
+        string sshKeyPath, string sshPassword, string remoteDestRoot, bool resume = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return DdsBridgeInterop.FacadeRsync_Start(_handle, rsyncExePath, localSourceDir, sshUser, sshHost, sshPort,
-            sshKeyPath, remoteDestRoot, resume, _progressCallback, _completeCallback, IntPtr.Zero);
+            sshKeyPath, sshPassword, remoteDestRoot, resume, _progressCallback, _completeCallback, IntPtr.Zero);
     }
 
     public void Cancel()

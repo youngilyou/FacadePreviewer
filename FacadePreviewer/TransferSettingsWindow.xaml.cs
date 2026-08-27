@@ -226,6 +226,8 @@ public partial class TransferSettingsWindow : Window
             SshUserTextBox.Text = saved.SshUser;
         if (!string.IsNullOrEmpty(saved.SshKeyPath))
             SshKeyTextBox.Text = saved.SshKeyPath;
+        if (!string.IsNullOrEmpty(saved.SshPassword))
+            SshPasswordBox.Password = saved.SshPassword;
         if (!string.IsNullOrEmpty(saved.RemoteRoot))
             RemoteRootTextBox.Text = saved.RemoteRoot;
         if (!string.IsNullOrEmpty(saved.LocalFolder))
@@ -275,6 +277,7 @@ public partial class TransferSettingsWindow : Window
             Port: PortTextBox.Text.Trim(),
             SshUser: SshUserTextBox.Text.Trim(),
             SshKeyPath: SshKeyTextBox.Text.Trim(),
+            SshPassword: SshPasswordBox.Password,
             RemoteRoot: RemoteRootTextBox.Text.Trim(),
             LocalFolder: LocalFolderTextBox.Text.Trim(),
             BatchMode: BatchModeCheckBox.IsChecked == true,
@@ -569,6 +572,9 @@ public partial class TransferSettingsWindow : Window
 
         var remoteRoot = RemoteRootTextBox.Text.Trim().TrimEnd('/');
         var sshKeyPath = SshKeyTextBox.Text.Trim();
+        // 2026-08-27: SSH 키 없으면 Password로(sshpass) -- 키가 있으면 항상 키가 우선(RsyncTransfer.cpp
+        // Start()와 동일한 우선순위, 빈 문자열로 넘기면 그쪽에서도 키만 쓰던 기존 동작 그대로).
+        var sshPassword = sshKeyPath.Length == 0 ? SshPasswordBox.Password : "";
 
         try
         {
@@ -594,7 +600,7 @@ public partial class TransferSettingsWindow : Window
                         : (resume ? "전송 재개..." : "전송 시작...");
 
                     var (exitCode, errorMessage) = await RunSingleTransferAsync(rsyncExePath, folder, sshUser, host, port,
-                        sshKeyPath, remoteDest, resume, direction, i + 1, plan.Count);
+                        sshKeyPath, sshPassword, remoteDest, resume, direction, i + 1, plan.Count);
                     if (exitCode == 0)
                         break; // this direction done -- move on to the next one in plan
 
@@ -647,7 +653,7 @@ public partial class TransferSettingsWindow : Window
                     StatusText.Text = plan.Count > 1
                         ? $"[{i + 1}/{plan.Count}] {direction} 전송 크기 확인 중..."
                         : "전송 크기 확인 중...";
-                    var sizesMatch = await VerifyRemoteSizesMatchAsync(rsyncExePath, folder, sshUser, host, port, sshKeyPath, remoteDest);
+                    var sizesMatch = await VerifyRemoteSizesMatchAsync(rsyncExePath, folder, sshUser, host, port, sshKeyPath, sshPassword, remoteDest);
                     if (sizesMatch)
                         break;
 
@@ -674,7 +680,7 @@ public partial class TransferSettingsWindow : Window
                     StatusText.Text = plan.Count > 1
                         ? $"[{i + 1}/{plan.Count}] {direction} 크기 불일치 감지 ({verifyAttempt}/{maxSizeVerifyAttempts}) -- 재전송 중..."
                         : $"크기 불일치 감지 ({verifyAttempt}/{maxSizeVerifyAttempts}) -- 재전송 중...";
-                    await RunSingleTransferAsync(rsyncExePath, folder, sshUser, host, port, sshKeyPath, remoteDest,
+                    await RunSingleTransferAsync(rsyncExePath, folder, sshUser, host, port, sshKeyPath, sshPassword, remoteDest,
                         resume: false, direction, i + 1, plan.Count);
                 }
             }
@@ -752,21 +758,38 @@ public partial class TransferSettingsWindow : Window
     // how a single direction's session folder is always flat) via the same vendored Cygwin ssh.exe
     // rsync itself uses -- no new native code, this is a previewer-only addition.
     private static async Task<Dictionary<string, long>> QueryRemoteFileSizesAsync(string rsyncExePath,
-        string sshUser, string host, int port, string sshKeyPath, string remoteDir)
+        string sshUser, string host, int port, string sshKeyPath, string sshPassword, string remoteDir)
     {
         var result = new Dictionary<string, long>();
-        var sshExePath = Path.Combine(Path.GetDirectoryName(rsyncExePath)!, "ssh.exe");
+        var rsyncDir = Path.GetDirectoryName(rsyncExePath)!;
+        var sshExePath = Path.Combine(rsyncDir, "ssh.exe");
         if (!File.Exists(sshExePath))
             return result;
 
+        // 2026-08-27: key wins if both are set (same preference order as RsyncTransfer.cpp's
+        // Start()) -- only fall back to sshpass-wrapped password auth when no key was given.
+        var usePasswordAuth = string.IsNullOrEmpty(sshKeyPath) && !string.IsNullOrEmpty(sshPassword);
+        var sshpassExePath = Path.Combine(rsyncDir, "sshpass.exe");
+
         var psi = new ProcessStartInfo
         {
-            FileName = sshExePath,
+            FileName = usePasswordAuth ? sshpassExePath : sshExePath,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
+        if (usePasswordAuth)
+        {
+            if (!File.Exists(sshpassExePath))
+                return result;
+            // sshpass -e reads the password from SSHPASS (set below via EnvironmentVariables)
+            // instead of a command-line flag, so it never appears in this process's own command
+            // line (Task Manager/Process Explorer/WMI could otherwise read it there).
+            psi.ArgumentList.Add("-e");
+            psi.ArgumentList.Add(sshExePath);
+            psi.EnvironmentVariables["SSHPASS"] = sshPassword;
+        }
         psi.ArgumentList.Add("-p");
         psi.ArgumentList.Add(port.ToString());
         psi.ArgumentList.Add("-o");
@@ -777,6 +800,13 @@ public partial class TransferSettingsWindow : Window
         {
             psi.ArgumentList.Add("-i");
             psi.ArgumentList.Add(ToCygdrivePath(sshKeyPath));
+        }
+        else if (usePasswordAuth)
+        {
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("PreferredAuthentications=password");
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add("PubkeyAuthentication=no");
         }
         psi.ArgumentList.Add($"{sshUser}@{host}");
         // Tab-separated, size first -- a filename could in principle contain a space, so the
@@ -816,7 +846,7 @@ public partial class TransferSettingsWindow : Window
     // rsync's own exit code, not a replacement for it; rsync already reported success before this
     // ever runs.
     private static async Task<bool> VerifyRemoteSizesMatchAsync(string rsyncExePath, string localFolder,
-        string sshUser, string host, int port, string sshKeyPath, string remoteDest)
+        string sshUser, string host, int port, string sshKeyPath, string sshPassword, string remoteDest)
     {
         var localSizes = new Dictionary<string, long>();
         try
@@ -831,7 +861,7 @@ public partial class TransferSettingsWindow : Window
         if (localSizes.Count == 0)
             return true;
 
-        var remoteSizes = await QueryRemoteFileSizesAsync(rsyncExePath, sshUser, host, port, sshKeyPath, remoteDest);
+        var remoteSizes = await QueryRemoteFileSizesAsync(rsyncExePath, sshUser, host, port, sshKeyPath, sshPassword, remoteDest);
         if (remoteSizes.Count == 0)
             return true; // could not query remote at all -- fail open, see this method's own comment
 
@@ -847,7 +877,7 @@ public partial class TransferSettingsWindow : Window
     // simply await each direction in sequence -- rsync itself is still one process per call
     // (unchanged from before), this only changes how the *dialog* drives multiple calls.
     private Task<(int ExitCode, string ErrorMessage)> RunSingleTransferAsync(string rsyncExePath, string localFolder,
-        string sshUser, string host, int port, string sshKeyPath, string remoteDest, bool resume,
+        string sshUser, string host, int port, string sshKeyPath, string sshPassword, string remoteDest, bool resume,
         string direction, int index, int total)
     {
         var tcs = new TaskCompletionSource<(int, string)>();
@@ -869,7 +899,7 @@ public partial class TransferSettingsWindow : Window
             Dispatcher.BeginInvoke(() => tcs.TrySetResult((exitCode, errorMessage)));
         };
 
-        var started = _transfer.Start(rsyncExePath, localFolder, sshUser, host, port, sshKeyPath, remoteDest, resume);
+        var started = _transfer.Start(rsyncExePath, localFolder, sshUser, host, port, sshKeyPath, sshPassword, remoteDest, resume);
         if (!started)
         {
             _transfer.Dispose();

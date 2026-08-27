@@ -40,7 +40,7 @@ $InstallDir = Join-Path $ScriptDir "cygwin_rsync"
 $BinDir = Join-Path $InstallDir "bin"
 $DownloadDir = Join-Path $InstallDir "_download"
 
-if ((Test-Path (Join-Path $BinDir "rsync.exe")) -and (Test-Path (Join-Path $BinDir "cygwin1.dll")) -and (Test-Path (Join-Path $BinDir "ssh.exe"))) {
+if ((Test-Path (Join-Path $BinDir "rsync.exe")) -and (Test-Path (Join-Path $BinDir "cygwin1.dll")) -and (Test-Path (Join-Path $BinDir "ssh.exe")) -and (Test-Path (Join-Path $BinDir "sshpass.exe"))) {
     Write-Host "OK -- already installed at $BinDir, skipping (delete that folder to force a re-download)."
     exit 0
 }
@@ -74,6 +74,11 @@ $Packages = @(
     @{ Name = "libkrb5support0";   Url = "$Mirror/krb5/libkrb5support0/libkrb5support0-1.15.2-2.tar.xz";            ExtractPath = "usr/bin/cygkrb5support-0.dll" }
     @{ Name = "libcom_err2";       Url = "$Mirror/e2fsprogs/libcom_err2/libcom_err2-1.44.5-1.tar.xz";                ExtractPath = "usr/bin/cygcom_err-2.dll" }
     @{ Name = "libintl8";          Url = "$Mirror/gettext/libintl8/libintl8-0.26-1-x86_64.tar.xz";                  ExtractPath = "usr/bin/cygintl-8.dll" }
+    # sshpass: non-interactive password auth for ssh (2026-08-27, "SSH 키 없으면 Password로"
+    # requirement -- see RsyncTransfer.cpp's ssh_password handling). Depends only on cygwin1.dll
+    # (already vendored above, confirmed via this package's own .hint file: "requires: cygwin"),
+    # no extra transitive DLLs.
+    @{ Name = "sshpass";           Url = "$Mirror/sshpass/sshpass-1.10-1-x86_64.tar.xz";                            ExtractPath = "usr/bin/sshpass.exe" }
 )
 
 # Windows' own bundled tar.exe (bsdtar/libarchive) handles both .tar.xz and .tar.zst natively --
@@ -124,8 +129,18 @@ if ($LASTEXITCODE -ne 0 -or -not ($sshVersionOutput -match "OpenSSH")) {
     throw "ssh.exe did not run correctly after install (missing DLL?) -- output: $sshVersionOutput"
 }
 
+$sshpassExe = Join-Path $BinDir "sshpass.exe"
+# sshpass -V exits 1 by design (not 0) but still prints its version banner to stdout -- checking
+# the banner text, not $LASTEXITCODE, matches sshpass's own actual documented behavior.
+$sshpassVersionOutput = & $sshpassExe -V 2>&1 | Out-String
+if (-not ($sshpassVersionOutput -match "sshpass")) {
+    throw "sshpass.exe did not run correctly after install (missing DLL?) -- output: $sshpassVersionOutput"
+}
+
 Write-Host ""
 Write-Host "OK -- rsync installed at: $rsyncExe"
 Write-Host ($versionOutput | Select-Object -First 1)
 Write-Host "OK -- ssh installed at: $sshExe"
 Write-Host ($sshVersionOutput.Trim())
+Write-Host "OK -- sshpass installed at: $sshpassExe"
+Write-Host ($sshpassVersionOutput | Select-Object -First 1)

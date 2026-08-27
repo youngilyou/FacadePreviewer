@@ -167,6 +167,41 @@ bool ParseProgress2Line(const std::string& line, uint64_t& bytes, int& percent, 
     return true;
 }
 
+// Builds a CreateProcessW-ready environment block (double-null-terminated "KEY=VALUE\0...\0\0")
+// that is the current process's own environment plus SSHPASS=<password> appended -- rsync.exe
+// itself doesn't read SSHPASS, but the sshpass-wrapped ssh it spawns as ITS OWN child process
+// inherits this process's environment by default, which is how the password actually reaches
+// sshpass without ever appearing on any command line (visible in Task Manager/ps otherwise).
+// Returns empty when password is empty (caller should pass nullptr to CreateProcessW in that
+// case, i.e. plain inherited environment, no SSHPASS entry at all).
+std::vector<wchar_t> BuildEnvironmentWithSshPass(const std::wstring& password)
+{
+    std::vector<wchar_t> block;
+    if (password.empty())
+        return block;
+
+    LPWCH current_env = GetEnvironmentStringsW();
+    if (current_env == nullptr)
+        return block;
+
+    // Copy every existing "KEY=VALUE\0" entry up to (but not including) the terminating extra \0.
+    const wchar_t* p = current_env;
+    while (*p != L'\0')
+    {
+        const size_t len = wcslen(p) + 1; // include this entry's own null terminator
+        block.insert(block.end(), p, p + len);
+        p += len;
+    }
+    FreeEnvironmentStringsW(current_env);
+
+    const std::wstring entry = L"SSHPASS=" + password;
+    block.insert(block.end(), entry.begin(), entry.end());
+    block.push_back(L'\0');
+    block.push_back(L'\0'); // final extra null terminates the whole block
+
+    return block;
+}
+
 } // namespace
 
 bool RsyncTransfer::Start(
@@ -176,6 +211,7 @@ bool RsyncTransfer::Start(
         const std::string& ssh_host,
         int ssh_port,
         const std::wstring& ssh_key_path,
+        const std::wstring& ssh_password,
         const std::string& remote_dest_root,
         bool resume,
         FacadeRsyncProgressCallback progress_cb,
@@ -199,7 +235,21 @@ bool RsyncTransfer::Start(
     const std::wstring rsync_dir = rsync_exe_path.substr(0, rsync_exe_path.find_last_of(L"/\\") + 1);
     const std::string ssh_cygpath = ToCygdrivePath(rsync_dir + L"ssh.exe");
 
+    // 2026-08-27: key wins if both are set (operator's own stated preference order, see
+    // RsyncTransfer.h's Start() doc comment) -- only fall back to sshpass-wrapped password auth
+    // when no key path was given at all.
+    const bool use_password_auth = ssh_key_path.empty() && !ssh_password.empty();
+
     std::ostringstream ssh_cmd;
+    if (use_password_auth)
+    {
+        // sshpass -e reads the password from the SSHPASS env var (set on this child process's
+        // own environment below, see BuildEnvironmentWithSshPass) rather than a command-line
+        // flag -- -p <password> would put the plaintext password directly into this process's
+        // command line, visible to anything that can list process command lines (Task Manager,
+        // Process Explorer, WMI), which -e avoids entirely.
+        ssh_cmd << ToCygdrivePath(rsync_dir + L"sshpass.exe") << " -e ";
+    }
     ssh_cmd << ssh_cygpath << " -p " << ssh_port << " -o StrictHostKeyChecking=accept-new"
             // Cygwin's ssh.exe resolves $HOME to /home/<Windows username> by default, which
             // doesn't exist (no Cygwin install providing that directory tree) -- without this,
@@ -222,6 +272,11 @@ bool RsyncTransfer::Start(
             << " -o ServerAliveInterval=15 -o ServerAliveCountMax=6";
     if (!ssh_key_path.empty())
         ssh_cmd << " -i " << ToCygdrivePath(ssh_key_path);
+    else if (use_password_auth)
+        // Steers ssh straight to the password prompt sshpass is waiting to answer, instead of
+        // first trying (and failing/timing out on) pubkey or other auth methods sshpass doesn't
+        // handle -- also means a leftover default key under ~/.ssh never gets tried by accident.
+        ssh_cmd << " -o PreferredAuthentications=password -o PubkeyAuthentication=no";
 
     const std::string source_cygpath = ToCygdrivePath(local_source_dir) + "/";
     const std::string remote_spec = ssh_user + "@" + ssh_host + ":" + remote_dest_root + "/";
@@ -260,9 +315,18 @@ bool RsyncTransfer::Start(
     std::vector<wchar_t> cmdline_buf(cmdline.begin(), cmdline.end());
     cmdline_buf.push_back(L'\0');
 
+    // Only build/pass a custom environment block when password auth actually needs SSHPASS in
+    // it -- CreateProcessW's own nullptr default (inherit this process's environment verbatim)
+    // is exactly the pre-existing, already-correct behavior for key-based/no-auth-override runs.
+    const std::vector<wchar_t> env_block = use_password_auth ? BuildEnvironmentWithSshPass(ssh_password) : std::vector<wchar_t>{};
+    LPVOID env_ptr = env_block.empty() ? nullptr : (LPVOID)env_block.data();
+    DWORD creation_flags = CREATE_NO_WINDOW;
+    if (env_ptr != nullptr)
+        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
+
     const BOOL created = CreateProcessW(
             nullptr, cmdline_buf.data(), nullptr, nullptr, TRUE,
-            CREATE_NO_WINDOW, nullptr, nullptr, &si, &process_info_);
+            creation_flags, env_ptr, nullptr, &si, &process_info_);
 
     CloseHandle(stdout_write);
     if (!created)

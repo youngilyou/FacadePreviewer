@@ -37,6 +37,12 @@ public:
     //   tree, the caller/UI does, see MainViewModel's session-folder logic).
     // ssh_key_path: pass empty string to use ssh's own default key discovery (~/.ssh/*), i.e. no
     //   -i flag is added.
+    // ssh_password: 2026-08-27, "SSH 키 없으면 Password로" requirement -- only consulted when
+    //   ssh_key_path is empty (key always wins if both are set, matching the operator's own
+    //   stated preference order). Non-interactive password auth needs sshpass (vendored alongside
+    //   rsync.exe/ssh.exe, see Get-CygwinRsync.ps1) since plain ssh has no non-interactive
+    //   password flag of its own; empty ssh_password with an empty ssh_key_path falls back to
+    //   ssh's own default key discovery exactly as before this parameter existed.
     // remote_dest_root: destination base path on the DDS-Router host (the FacadeImageBridge
     //   watch root) -- local_source_dir's own leaf directories get rsync'd underneath it.
     // resume: false (default/original behavior) re-runs plain rsync -avz -- already-complete
@@ -56,6 +62,7 @@ public:
             const std::string& ssh_host,
             int ssh_port,
             const std::wstring& ssh_key_path,
+            const std::wstring& ssh_password,
             const std::string& remote_dest_root,
             bool resume,
             FacadeRsyncProgressCallback progress_cb,

@@ -43,7 +43,7 @@ void FacadeRsync_Destroy(void* handle)
 
 bool FacadeRsync_Start(void* handle, const wchar_t* rsync_exe_path, const wchar_t* local_source_dir,
         const char* ssh_user, const char* ssh_host, int ssh_port, const wchar_t* ssh_key_path,
-        const char* remote_dest_root, bool resume, FacadeRsyncProgressCallback progress_cb,
+        const wchar_t* ssh_password, const char* remote_dest_root, bool resume, FacadeRsyncProgressCallback progress_cb,
         FacadeRsyncCompleteCallback complete_cb, void* user_data)
 {
     return static_cast<RsyncTransfer*>(handle)->Start(
@@ -53,6 +53,7 @@ bool FacadeRsync_Start(void* handle, const wchar_t* rsync_exe_path, const wchar_
             ssh_host ? ssh_host : "",
             ssh_port,
             ssh_key_path ? ssh_key_path : L"",
+            ssh_password ? ssh_password : L"",
             remote_dest_root ? remote_dest_root : "",
             resume,
             progress_cb, complete_cb, user_data);

@@ -131,6 +131,11 @@ internal static class DdsBridgeInterop
         [MarshalAs(UnmanagedType.LPStr)] string sshHost,
         int sshPort,
         [MarshalAs(UnmanagedType.LPWStr)] string sshKeyPath,
+        // 2026-08-27: only consulted (RsyncTransfer.cpp Start()) when sshKeyPath is empty -- LPWStr
+        // for the same reason sshKeyPath itself is: RsyncTransfer.cpp treats both as wide strings
+        // (ToCygdrivePath takes a std::wstring), and a password can just as plausibly contain
+        // non-ASCII text as a file path can.
+        [MarshalAs(UnmanagedType.LPWStr)] string sshPassword,
         // LPUTF8Str, not LPStr (== ANSI/system codepage) -- remoteDestRoot embeds the
         // operator-chosen company/building text (e.g. Korean), and RsyncTransfer.cpp's
         // ToCygdrivePath/remote_spec construction already assumes UTF-8 bytes on the native side
