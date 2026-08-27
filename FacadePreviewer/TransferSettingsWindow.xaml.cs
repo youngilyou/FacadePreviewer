@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using FacadePreviewer.Services;
 using Microsoft.Win32;
 
@@ -93,6 +94,16 @@ public partial class TransferSettingsWindow : Window
     // 호출이라 지역 변수로 충분했지만, 인라인 버튼은 별도 Click 핸들러에서 나중에 실행되므로 필드로
     // 옮겨야 함.
     private FacadeStorageResult? _awaitingAnalysisConfirmResult;
+
+    // 2026-08-27: AnalysisDispatchRequest 재전송 루프 -- QoS를 BEST_EFFORT+VOLATILE로 바꾼 뒤
+    // (AnalysisCommandBridge.cpp 참고) 신뢰성을 이 앱이 직접 챙겨야 함. 2초 간격, 최대 3회
+    // 전송하고 그래도 응답(AnalysisDispatched/AnalysisDispatchFailed)이 없으면 에러 팝업 후
+    // 종료(추가 재시도 없음).
+    private const int MaxDispatchAttempts = 3;
+    private static readonly TimeSpan DispatchRetryInterval = TimeSpan.FromSeconds(2);
+    private DispatcherTimer? _dispatchRetryTimer;
+    private int _dispatchAttemptCount;
+    private FacadeStorageResult? _dispatchingResult;
 
     private readonly string _ddsHost;
     private readonly int _ddsPort;
@@ -942,14 +953,33 @@ public partial class TransferSettingsWindow : Window
     {
         var (brushKey, prefix, bold) = state switch
         {
-            StageState.Active => ("Accent", "● ", true),
+            StageState.Active => ("Accent", "◐ ", true),
             StageState.Done => ("Good", "✓ ", false),
             StageState.Failed => ("Accent", "✗ ", false),
             StageState.Skipped => ("Text2", "- (건너뜀) ", false),
             _ => ("Text2", "○ ", false),
         };
         var brush = (Brush)Application.Current.Resources[brushKey];
-        dot.Fill = brush;
+
+        // 2026-08-27: Active(진행 중)만 반반(half accent / half neutral)으로 채움 -- 요청: "그림
+        // 항목을 반반으로 나누어 주세요... 시작하면 끝입니다... 지우진 마시고요". 이 상태는
+        // (분석처럼) 실제 AnalysisResult가 올 때까지, 심지어 그게 한참 걸리거나 영영 안 와도
+        // 그대로 남아있는 게 정상 -- Done의 꽉 찬 체크 원과 시각적으로 구분해서, "시작됐고 계속
+        // 진행 중"과 "실제로 끝남"을 헷갈리지 않게 함.
+        if (state == StageState.Active && brush is SolidColorBrush accentSolid
+            && Application.Current.Resources["Text2"] is SolidColorBrush neutralSolid)
+        {
+            var half = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
+            half.GradientStops.Add(new GradientStop(accentSolid.Color, 0.0));
+            half.GradientStops.Add(new GradientStop(accentSolid.Color, 0.5));
+            half.GradientStops.Add(new GradientStop(neutralSolid.Color, 0.5));
+            half.GradientStops.Add(new GradientStop(neutralSolid.Color, 1.0));
+            dot.Fill = half;
+        }
+        else
+        {
+            dot.Fill = brush;
+        }
         label.Foreground = state == StageState.Pending ? (Brush)Application.Current.Resources["Text2"] : brush;
         label.FontWeight = bold ? FontWeights.Bold : FontWeights.Normal;
         var baseText = label.Tag as string ?? label.Text; // Tag caches the original plain label the first time this runs
@@ -971,6 +1001,8 @@ public partial class TransferSettingsWindow : Window
         SetStage(StageDoneDot, StageDoneLabel, StageState.Pending);
         AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
         _awaitingAnalysisConfirmResult = null;
+        StopDispatchRetryTimer();
+        _dispatchingResult = null;
     }
 
     // "예, 분석 시작" -- 예전 ThemedDialog.ShowConfirm 팝업의 Yes 분기와 동일한 로직
@@ -984,19 +1016,74 @@ public partial class TransferSettingsWindow : Window
         SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Done);
 
         _pendingAnalysisArchiveId = result.ArchiveId;
+        _dispatchingResult = result;
+        _dispatchAttemptCount = 0;
+        _awaitingAnalysisConfirmResult = null;
+
+        SendDispatchAttempt();
+    }
+
+    /// <summary>Sends one AnalysisDispatchRequest attempt and (re)arms the 2s retry timer. Called
+    /// once from OnAnalysisStartYesClick and again from OnDispatchRetryTick for each resend --
+    /// see the field-level comment on _dispatchRetryTimer for why this exists at all (QoS is now
+    /// BEST_EFFORT+VOLATILE, so nothing below the application layer retransmits this anymore).</summary>
+    private void SendDispatchAttempt()
+    {
+        var result = _dispatchingResult;
+        if (result == null)
+            return;
+
+        _dispatchAttemptCount++;
         var sent = _analysisCommand?.SendDispatchRequest(result.ArchiveId, result.Company, result.Building,
             "", result.ImageCount, result.ZipPath, result.SizeBytes) ?? false;
-        if (sent)
+
+        if (!sent)
         {
-            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Active, $"Archive ID {result.ArchiveId}");
-            StatusText.Text = $"분석 요청 전송됨 (Archive ID: {result.ArchiveId})";
-        }
-        else
-        {
+            StopDispatchRetryTimer();
+            _dispatchingResult = null;
             SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Failed, "DDS 연결 실패");
             StatusText.Text = "분석 요청 전송 실패 -- DDS 연결을 확인하세요.";
+            return;
         }
-        _awaitingAnalysisConfirmResult = null;
+
+        SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Active,
+            $"Archive ID {result.ArchiveId} ({_dispatchAttemptCount}/{MaxDispatchAttempts}차 전송)");
+        StatusText.Text = $"분석 요청 전송됨 ({_dispatchAttemptCount}/{MaxDispatchAttempts}차 시도, Archive ID: {result.ArchiveId})";
+
+        _dispatchRetryTimer?.Stop();
+        _dispatchRetryTimer = new DispatcherTimer { Interval = DispatchRetryInterval };
+        _dispatchRetryTimer.Tick += OnDispatchRetryTick;
+        _dispatchRetryTimer.Start();
+    }
+
+    private void OnDispatchRetryTick(object? sender, EventArgs e)
+    {
+        if (_dispatchAttemptCount >= MaxDispatchAttempts)
+        {
+            var archiveId = _dispatchingResult?.ArchiveId ?? _pendingAnalysisArchiveId;
+            StopDispatchRetryTimer();
+            _dispatchingResult = null;
+            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Failed, "응답 없음");
+            StatusText.Text = $"분석 요청에 응답이 없습니다 (Archive ID: {archiveId}).";
+            ThemedDialog.ShowInfo(this, "분석 요청 실패",
+                $"분석 시작 요청을 {MaxDispatchAttempts}회 보냈지만 응답이 없습니다.\n\n" +
+                $"AnalysisLoadBalancer가 실행 중인지 확인하세요.\n(Archive ID: {archiveId})",
+                (Brush)Application.Current.Resources["Accent"]);
+            return;
+        }
+        SendDispatchAttempt();
+    }
+
+    /// <summary>Called whenever we've heard back (AnalysisDispatched/AnalysisDispatchFailed) or a
+    /// fresh transfer is starting -- stops resending, doesn't touch anything else about UI state
+    /// (callers set their own stage/StatusText afterward).</summary>
+    private void StopDispatchRetryTimer()
+    {
+        if (_dispatchRetryTimer == null)
+            return;
+        _dispatchRetryTimer.Stop();
+        _dispatchRetryTimer.Tick -= OnDispatchRetryTick;
+        _dispatchRetryTimer = null;
     }
 
     // "아니오" -- 예전엔 ShowConfirm이 false를 반환하면 그냥 아무 것도 안 했음(StatusText는
@@ -1116,7 +1203,13 @@ public partial class TransferSettingsWindow : Window
     private void OnAnalysisDispatched(AnalysisDispatched d)
     {
         if (d.ArchiveId != _pendingAnalysisArchiveId) return;
-        Dispatcher.BeginInvoke(() => StatusText.Text = $"분석 배정됨: worker={d.AssignedWorkerId} (Archive ID: {d.ArchiveId})");
+        Dispatcher.BeginInvoke(() =>
+        {
+            // 응답을 받았으니 2초 재전송 루프 중단 (아직 대기 중이었다면).
+            StopDispatchRetryTimer();
+            _dispatchingResult = null;
+            StatusText.Text = $"분석 배정됨: worker={d.AssignedWorkerId} (Archive ID: {d.ArchiveId})";
+        });
     }
 
     private void OnAnalysisDispatchFailed(AnalysisDispatchFailed d)
@@ -1124,6 +1217,8 @@ public partial class TransferSettingsWindow : Window
         if (d.ArchiveId != _pendingAnalysisArchiveId) return;
         Dispatcher.BeginInvoke(() =>
         {
+            StopDispatchRetryTimer();
+            _dispatchingResult = null;
             StatusText.Text = $"분석 배정 실패: {d.Reason} (Archive ID: {d.ArchiveId})";
             SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Failed, d.Reason);
             ThemedDialog.ShowInfo(this, "분석 배정 실패",
@@ -1721,6 +1816,7 @@ public partial class TransferSettingsWindow : Window
         _storageStatus = null;
         _analysisCommand?.Dispose();
         _analysisCommand = null;
+        StopDispatchRetryTimer();
         _thumbnailLoadCts?.Cancel();
         CleanupStagingFolders();
         base.OnClosed(e);

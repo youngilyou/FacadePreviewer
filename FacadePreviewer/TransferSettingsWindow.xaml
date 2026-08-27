@@ -27,9 +27,16 @@
         <!-- Width fixed regardless of window size (Auto column above). Maximizing the window
              must never stretch the transfer-settings controls, only give this column's row more
              vertical room (harmless; VerticalAlignment=Top keeps content anchored at its natural
-             height instead of spreading out). -->
+             height instead of spreading out).
+             2026-08-27: wrapped in a ScrollViewer: this panel's content (server settings +
+             classification + progress-stage panel, 5 stages incl. the inline analysis-start
+             confirm buttons) now taller than fits on some screens/window heights even maximized,
+             and a bare StackPanel has no scrollbar of its own, so overflow was silently clipped
+             off the bottom of the window with no way to reach it (user report: "진행 내용을 볼 수
+             없어요", the 분석 대기 stage's 예/아니오 buttons were the part cut off). -->
+        <ScrollViewer Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel x:Name="MainSettingsPanel"
-                    Grid.Row="1" Grid.Column="0" Width="520"
+                    Width="520"
                     HorizontalAlignment="Left" VerticalAlignment="Top">
             <TextBlock Text="서버 접속 설정" Style="{StaticResource Kicker}" Margin="0,0,0,8"/>
 
@@ -178,48 +185,61 @@
             <ProgressBar x:Name="TransferProgressBar" Height="18" Minimum="0" Maximum="100" Margin="0,0,0,6"/>
             <TextBlock x:Name="StatusText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-            <!-- 진행 단계 패널 (2026-08-27): "분석 시작" 확인을 팝업이 아니라 이 창 안에,
-                 저장 완료 아래 항상 보이는 전용 섹션으로 표시해달라는 요청. 5단계(전송/저장 처리/
-                 분석 대기/분석 진행/완료) 각각을 SetStage()로 갱신: Pending(회색)/Active(주황,
-                 굵게)/Done(초록, 체크)/Failed(빨강, X). "분석 대기" 단계에서만 예/아니오 버튼이
-                 인라인으로 나타남(기존 ThemedDialog.ShowConfirm 팝업 대체). -->
+            <!-- 진행 단계 패널 (2026-08-27): "저장 완료" 텍스트 바로 아래, 항상 이 자리.
+                 한때 오른쪽 빈 공간으로 옮겼었는데("절차 내용을 오른쪽에 빈공간이 많으니 반으로
+                 나누어서 좌우에 채우라고"의 오독), 사용자가 위치 자체는 그대로(저장 완료 텍스트
+                 아래)이길 원한다고 정정함("위치를 저장완료 텍스트 아래로 옴기세요"). 그
+                 요청의 실제 의도는 "패널 내부를 좌우 두 칼럼으로 나누라"는 것뿐이었음. 그래서
+                 내부 2칼럼 레이아웃(좌: 전송/저장 처리/분석 대기+확인버튼, 우: 분석 진행/완료)은
+                 유지하고 위치만 원래 자리로 되돌림. -->
             <Border x:Name="ProgressStagePanel" Background="{StaticResource Surface2}" CornerRadius="6" Padding="10,8" Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock Text="진행 단계" FontWeight="Bold" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,0,6"/>
+                    <TextBlock Text="진행 단계" FontWeight="Bold" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,0,8"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                        <Ellipse x:Name="StageTransferDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="StageTransferLabel" Text="전송" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                    </StackPanel>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Ellipse x:Name="StageTransferDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StageTransferLabel" Text="전송" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                        <Ellipse x:Name="StageStorageDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="StageStorageLabel" Text="저장 처리" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                    </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Ellipse x:Name="StageStorageDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StageStorageLabel" Text="저장 처리" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                    <StackPanel Margin="0,0,0,5">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="StageAnalysisWaitDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="StageAnalysisWaitLabel" Text="분석 대기" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="StageAnalysisWaitDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="StageAnalysisWaitLabel" Text="분석 대기" Foreground="{StaticResource Text2}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel x:Name="AnalysisConfirmPanel" Orientation="Horizontal" Margin="17,5,0,0" Visibility="Collapsed">
+                                    <Button x:Name="AnalysisStartYesButton" Content="예, 분석 시작" Padding="8,3" Margin="0,0,6,0" Click="OnAnalysisStartYesClick"/>
+                                    <Button x:Name="AnalysisStartNoButton" Content="아니오" Padding="8,3" Click="OnAnalysisStartNoClick"/>
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
-                        <StackPanel x:Name="AnalysisConfirmPanel" Orientation="Horizontal" Margin="17,5,0,0" Visibility="Collapsed">
-                            <Button x:Name="AnalysisStartYesButton" Content="예, 분석 시작" Padding="8,3" Margin="0,0,6,0" Click="OnAnalysisStartYesClick"/>
-                            <Button x:Name="AnalysisStartNoButton" Content="아니오" Padding="8,3" Click="OnAnalysisStartNoClick"/>
+
+                        <StackPanel Grid.Column="1">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Ellipse x:Name="StageAnalysisRunDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StageAnalysisRunLabel" Text="분석 진행" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse x:Name="StageDoneDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="StageDoneLabel" Text="완료" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                        <Ellipse x:Name="StageAnalysisRunDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="StageAnalysisRunLabel" Text="분석 진행" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StageDoneDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="StageDoneLabel" Text="완료" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                    </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Border>
         </StackPanel>
+        </ScrollViewer>
 
         <!-- 전송 전 사진 검토 패널. 체크 해제는 원본 파일을 지우지 않고 이번 전송에서만 제외한다
              (see TransferSettingsWindow.xaml.cs's ReviewImageItem/GetExcludedFileSet comments).

@@ -274,38 +274,45 @@ bool AnalysisCommandBridge::Start(int domainId, const char* topicPrefix, const c
         return false;
     }
 
-    auto make_reliable_wqos = []() {
+    // 2026-08-27: switched from RELIABLE+TRANSIENT_LOCAL to BEST_EFFORT+VOLATILE (operator
+    // request: "UDP 형식으로 휘발성"). TRANSIENT_LOCAL's durability cache was replaying old
+    // AnalysisAssignment/AnalysisDispatched samples to CheckCrackViewer every time it restarted
+    // (confirmed root cause of a real re-execution bug there -- see ProcessedArchiveStore's own
+    // doc comment). Reliability is now handled at the application layer instead: the caller
+    // (TransferSettingsWindow) resends AnalysisDispatchRequest itself on a timeout instead of
+    // relying on DDS to retransmit/replay it.
+    auto make_volatile_wqos = []() {
         DataWriterQos wqos = DATAWRITER_QOS_DEFAULT;
-        wqos.reliability().kind = RELIABLE_RELIABILITY_QOS;
-        wqos.durability().kind = TRANSIENT_LOCAL_DURABILITY_QOS;
+        wqos.reliability().kind = BEST_EFFORT_RELIABILITY_QOS;
+        wqos.durability().kind = VOLATILE_DURABILITY_QOS;
         wqos.history().kind = KEEP_LAST_HISTORY_QOS;
         wqos.history().depth = 20;
         return wqos;
     };
-    impl->dispatch_writer = impl->publisher->create_datawriter(impl->dispatch_topic, make_reliable_wqos());
-    impl->retry_writer = impl->publisher->create_datawriter(impl->retry_topic, make_reliable_wqos());
-    impl->stop_writer = impl->publisher->create_datawriter(impl->stop_topic, make_reliable_wqos());
+    impl->dispatch_writer = impl->publisher->create_datawriter(impl->dispatch_topic, make_volatile_wqos());
+    impl->retry_writer = impl->publisher->create_datawriter(impl->retry_topic, make_volatile_wqos());
+    impl->stop_writer = impl->publisher->create_datawriter(impl->stop_topic, make_volatile_wqos());
     if (!impl->dispatch_writer || !impl->retry_writer || !impl->stop_writer)
     {
         fprintf(stderr, "AnalysisCommandBridge: failed to create one or more writers\n");
         return false;
     }
 
-    auto make_reliable_rqos = []() {
+    auto make_volatile_rqos = []() {
         DataReaderQos rqos = DATAREADER_QOS_DEFAULT;
-        rqos.reliability().kind = RELIABLE_RELIABILITY_QOS;
-        rqos.durability().kind = TRANSIENT_LOCAL_DURABILITY_QOS;
+        rqos.reliability().kind = BEST_EFFORT_RELIABILITY_QOS;
+        rqos.durability().kind = VOLATILE_DURABILITY_QOS;
         rqos.history().kind = KEEP_LAST_HISTORY_QOS;
         rqos.history().depth = 20;
         return rqos;
     };
-    impl->dispatched_reader = impl->subscriber->create_datareader(impl->dispatched_topic, make_reliable_rqos(), &impl->dispatched_listener);
-    impl->dispatch_failed_reader = impl->subscriber->create_datareader(impl->dispatch_failed_topic, make_reliable_rqos(), &impl->dispatch_failed_listener);
-    impl->accepted_reader = impl->subscriber->create_datareader(impl->accepted_topic, make_reliable_rqos(), &impl->accepted_listener);
-    impl->queued_reader = impl->subscriber->create_datareader(impl->queued_topic, make_reliable_rqos(), &impl->queued_listener);
-    impl->started_reader = impl->subscriber->create_datareader(impl->started_topic, make_reliable_rqos(), &impl->started_listener);
-    impl->error_reader = impl->subscriber->create_datareader(impl->error_topic, make_reliable_rqos(), &impl->error_listener);
-    impl->result_reader = impl->subscriber->create_datareader(impl->result_topic, make_reliable_rqos(), &impl->result_listener);
+    impl->dispatched_reader = impl->subscriber->create_datareader(impl->dispatched_topic, make_volatile_rqos(), &impl->dispatched_listener);
+    impl->dispatch_failed_reader = impl->subscriber->create_datareader(impl->dispatch_failed_topic, make_volatile_rqos(), &impl->dispatch_failed_listener);
+    impl->accepted_reader = impl->subscriber->create_datareader(impl->accepted_topic, make_volatile_rqos(), &impl->accepted_listener);
+    impl->queued_reader = impl->subscriber->create_datareader(impl->queued_topic, make_volatile_rqos(), &impl->queued_listener);
+    impl->started_reader = impl->subscriber->create_datareader(impl->started_topic, make_volatile_rqos(), &impl->started_listener);
+    impl->error_reader = impl->subscriber->create_datareader(impl->error_topic, make_volatile_rqos(), &impl->error_listener);
+    impl->result_reader = impl->subscriber->create_datareader(impl->result_topic, make_volatile_rqos(), &impl->result_listener);
 
     // BEST_EFFORT -- matches AnalysisBridge's status_writer QoS on the worker side.
     DataReaderQos status_rqos = DATAREADER_QOS_DEFAULT;
