@@ -83,6 +83,17 @@ public partial class TransferSettingsWindow : Window
     private enum Phase { Idle, Transferring, Storing }
     private enum RetryChoice { Restart, Resume, Abort }
 
+    // 2026-08-27: "진행 단계" 패널의 각 행 상태 -- ThemedDialog.ShowConfirm 팝업으로 물어보던
+    // "분석 시작하시겠습니까?"를 이 창 안 전용 섹션으로 옮기면서 함께 추가. Skipped는 "아니오"를
+    // 선택한 경우(실패는 아니지만 그 다음 단계는 진행 안 함)에만 씀.
+    private enum StageState { Pending, Active, Done, Failed, Skipped }
+
+    // OnStorageResult에서 저장 성공을 확인한 시점부터, 운용자가 AnalysisConfirmPanel의 예/아니오를
+    // 실제로 클릭할 때까지 필요한 값들을 들고 있는다 -- 예전엔 ShowConfirm이 그 자리에서 블로킹
+    // 호출이라 지역 변수로 충분했지만, 인라인 버튼은 별도 Click 핸들러에서 나중에 실행되므로 필드로
+    // 옮겨야 함.
+    private FacadeStorageResult? _awaitingAnalysisConfirmResult;
+
     private readonly string _ddsHost;
     private readonly int _ddsPort;
     private readonly string _ddsLocalInterface;
@@ -525,6 +536,8 @@ public partial class TransferSettingsWindow : Window
         _pendingCompany = company;
         _pendingBuilding = building;
         _pendingJobStartedAtEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        ResetProgressStages();
+        SetStage(StageTransferDot, StageTransferLabel, StageState.Active);
         // Review panel is a pre-transfer-only tool -- hide it once the transfer actually starts
         // (still reachable via ReviewPanelToggleButton if the operator wants to check it again).
         // HideReviewPanel() also collapses only the right-side review window area while leaving
@@ -612,6 +625,7 @@ public partial class TransferSettingsWindow : Window
                         TransferButton.IsEnabled = true;
                         CancelButton.IsEnabled = false;
                         StatusText.Text = "전송이 취소되었습니다.";
+                        SetStage(StageTransferDot, StageTransferLabel, StageState.Skipped, "취소됨");
                         return;
                     }
 
@@ -632,6 +646,7 @@ public partial class TransferSettingsWindow : Window
                         TransferButton.IsEnabled = true;
                         CancelButton.IsEnabled = false;
                         StatusText.Text = $"[{i + 1}/{plan.Count}] {direction} 전송 중단됨 (전체 작업 중지).";
+                        SetStage(StageTransferDot, StageTransferLabel, StageState.Failed, "중단됨");
                         return;
                     }
                     resume = choice == "resume";
@@ -671,6 +686,7 @@ public partial class TransferSettingsWindow : Window
                             TransferButton.IsEnabled = true;
                             CancelButton.IsEnabled = false;
                             StatusText.Text = $"[{i + 1}/{plan.Count}] {direction} 전송 중단됨 (크기 불일치, 전체 작업 중지).";
+                            SetStage(StageTransferDot, StageTransferLabel, StageState.Failed, "크기 불일치");
                             return;
                         }
                         verifyAttempt = 0; // operator chose to keep trying -- reset the attempt counter
@@ -689,6 +705,8 @@ public partial class TransferSettingsWindow : Window
         {
             CleanupStagingFolders();
         }
+
+        SetStage(StageTransferDot, StageTransferLabel, StageState.Done);
 
         // A Result can legitimately already have arrived and been fully processed by this point
         // -- e.g. a re-send of an already-archived building (see
@@ -917,6 +935,79 @@ public partial class TransferSettingsWindow : Window
     // the last required image lands. This phase exists purely to give the operator visibility
     // (progress/cancel/completion) into that already-automatic process instead of it happening
     // silently. _storageStatus is already running by this point (started in OnTransferClick).
+    // 2026-08-27 "진행 단계" 패널 -- Pending(회색)/Active(주황, 굵게)/Done(초록, 체크)/
+    // Failed(빨강, X)/Skipped(회색, 취소선 대신 "건너뜀" 접두사 -- 실패는 아니지만 그 다음
+    // 단계로 진행하지 않았다는 뜻, "아니오"를 선택했을 때만 씀).
+    private static void SetStage(System.Windows.Shapes.Ellipse dot, System.Windows.Controls.TextBlock label, StageState state, string? detail = null)
+    {
+        var (brushKey, prefix, bold) = state switch
+        {
+            StageState.Active => ("Accent", "● ", true),
+            StageState.Done => ("Good", "✓ ", false),
+            StageState.Failed => ("Accent", "✗ ", false),
+            StageState.Skipped => ("Text2", "- (건너뜀) ", false),
+            _ => ("Text2", "○ ", false),
+        };
+        var brush = (Brush)Application.Current.Resources[brushKey];
+        dot.Fill = brush;
+        label.Foreground = state == StageState.Pending ? (Brush)Application.Current.Resources["Text2"] : brush;
+        label.FontWeight = bold ? FontWeights.Bold : FontWeights.Normal;
+        var baseText = label.Tag as string ?? label.Text; // Tag caches the original plain label the first time this runs
+        if (label.Tag == null)
+            label.Tag = baseText;
+        label.Text = prefix + baseText + (string.IsNullOrEmpty(detail) ? "" : $" ({detail})");
+    }
+
+    // Called once per fresh 전송 click -- every stage back to Pending, confirm panel hidden,
+    // stored result from a previous run (if any) cleared so a stale "예/아니오" click after a
+    // brand-new transfer started can't accidentally dispatch analysis for the WRONG archive.
+    private void ResetProgressStages()
+    {
+        ProgressStagePanel.Visibility = Visibility.Visible;
+        SetStage(StageTransferDot, StageTransferLabel, StageState.Pending);
+        SetStage(StageStorageDot, StageStorageLabel, StageState.Pending);
+        SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Pending);
+        SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Pending);
+        SetStage(StageDoneDot, StageDoneLabel, StageState.Pending);
+        AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
+        _awaitingAnalysisConfirmResult = null;
+    }
+
+    // "예, 분석 시작" -- 예전 ThemedDialog.ShowConfirm 팝업의 Yes 분기와 동일한 로직
+    // (SendDispatchRequest 호출), 팝업 대신 인라인 버튼에서 실행되는 것만 다름.
+    private void OnAnalysisStartYesClick(object sender, RoutedEventArgs e)
+    {
+        var result = _awaitingAnalysisConfirmResult;
+        if (result == null)
+            return;
+        AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
+        SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Done);
+
+        _pendingAnalysisArchiveId = result.ArchiveId;
+        var sent = _analysisCommand?.SendDispatchRequest(result.ArchiveId, result.Company, result.Building,
+            "", result.ImageCount, result.ZipPath, result.SizeBytes) ?? false;
+        if (sent)
+        {
+            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Active, $"Archive ID {result.ArchiveId}");
+            StatusText.Text = $"분석 요청 전송됨 (Archive ID: {result.ArchiveId})";
+        }
+        else
+        {
+            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Failed, "DDS 연결 실패");
+            StatusText.Text = "분석 요청 전송 실패 -- DDS 연결을 확인하세요.";
+        }
+        _awaitingAnalysisConfirmResult = null;
+    }
+
+    // "아니오" -- 예전엔 ShowConfirm이 false를 반환하면 그냥 아무 것도 안 했음(StatusText는
+    // "저장 완료: ..."로 남아있었음), 여기서도 동일하게 이후 단계는 진행하지 않고 끝냄.
+    private void OnAnalysisStartNoClick(object sender, RoutedEventArgs e)
+    {
+        AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
+        SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Skipped);
+        _awaitingAnalysisConfirmResult = null;
+    }
+
     private void EnterStorageWaitPhase(string company, string building)
     {
         _pendingCompany = company;
@@ -925,6 +1016,7 @@ public partial class TransferSettingsWindow : Window
         TransferButton.IsEnabled = false;
         CancelButton.IsEnabled = true;
         TransferProgressBar.Value = 0;
+        SetStage(StageStorageDot, StageStorageLabel, StageState.Active);
 
         if (_storageStatus == null)
         {
@@ -934,6 +1026,7 @@ public partial class TransferSettingsWindow : Window
             _phase = Phase.Idle;
             TransferButton.IsEnabled = true;
             CancelButton.IsEnabled = false;
+            SetStage(StageStorageDot, StageStorageLabel, StageState.Failed, "DDS 연결 없음");
         }
     }
 
@@ -979,6 +1072,7 @@ public partial class TransferSettingsWindow : Window
             if (result.Cancelled)
             {
                 StatusText.Text = $"저장 처리가 취소되었습니다 ({result.Company}/{result.Building}).";
+                SetStage(StageStorageDot, StageStorageLabel, StageState.Skipped, "취소됨");
                 ThemedDialog.ShowInfo(this, "저장 취소됨",
                     "저장 처리가 취소되었습니다. 원본 사진과 데이터베이스 기록은 그대로 유지됩니다.",
                     (Brush)Application.Current.Resources["Text2"]);
@@ -987,32 +1081,25 @@ public partial class TransferSettingsWindow : Window
             {
                 var mb = result.SizeBytes / (1024.0 * 1024.0);
                 StatusText.Text = $"저장 완료: {result.ImageCount}장, {mb:F1} MB ({result.ZipPath})";
-                ThemedDialog.ShowInfo(this, "저장 완료",
-                    $"{result.Company} / {result.Building} 저장이 완료되었습니다.\n\n" +
-                    $"이미지: {result.ImageCount}장\n압축 파일 크기: {mb:F1} MB\n경로: {result.ZipPath}\nArchive ID: {result.ArchiveId}",
-                    (Brush)Application.Current.Resources["Good"]);
+                SetStage(StageStorageDot, StageStorageLabel, StageState.Done);
 
-                // 분석 시작 -- archive_id는 방금 받은 FacadeStorageResult에서 확보(도메인 0),
+                // 분석 시작 여부 -- archive_id는 방금 받은 FacadeStorageResult에서 확보(도메인 0),
                 // 명령 자체는 도메인 30(AnalysisCommandBridge)으로 보냄. directions_csv는
                 // FacadeStorageResult에 없어서("" 전달) CheckCrackViewer 쪽 등록은 압축 해제 후
                 // 실제 하위 폴더를 스캔해서 결정하므로 값이 없어도 등록 자체엔 영향 없음(원격
                 // 분석 작업 창의 표시용 컬럼에만 씀) -- AnalysisCommandBridge.h의 SendDispatchRequest
-                // 주석 참고.
-                if (ThemedDialog.ShowConfirm(this, "분석 시작",
-                        $"{result.Company} / {result.Building} (Archive ID: {result.ArchiveId})에 대해 지금 분석을 시작하시겠습니까?",
-                        (Brush)Application.Current.Resources["Text2"]))
-                {
-                    _pendingAnalysisArchiveId = result.ArchiveId;
-                    var sent = _analysisCommand?.SendDispatchRequest(result.ArchiveId, result.Company, result.Building,
-                        "", result.ImageCount, result.ZipPath, result.SizeBytes) ?? false;
-                    StatusText.Text = sent
-                        ? $"분석 요청 전송됨 (Archive ID: {result.ArchiveId})"
-                        : "분석 요청 전송 실패 -- DDS 연결을 확인하세요.";
-                }
+                // 주석 참고. 2026-08-27: 팝업(ThemedDialog.ShowConfirm) 대신 "진행 단계" 패널의
+                // "분석 대기" 행에 인라인 예/아니오 버튼으로 물어봄 -- 실제 처리는
+                // OnAnalysisStartYesClick/OnAnalysisStartNoClick에서.
+                _awaitingAnalysisConfirmResult = result;
+                SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Active,
+                    $"{result.Company} / {result.Building}, Archive ID {result.ArchiveId}");
+                AnalysisConfirmPanel.Visibility = Visibility.Visible;
             }
             else
             {
                 StatusText.Text = $"저장 실패: {result.ErrorMessage}";
+                SetStage(StageStorageDot, StageStorageLabel, StageState.Failed, result.ErrorMessage);
                 ThemedDialog.ShowInfo(this, "저장 실패",
                     $"저장 처리 중 오류가 발생했습니다.\n\n{result.ErrorMessage}",
                     (Brush)Application.Current.Resources["Accent"]);
@@ -1038,6 +1125,7 @@ public partial class TransferSettingsWindow : Window
         Dispatcher.BeginInvoke(() =>
         {
             StatusText.Text = $"분석 배정 실패: {d.Reason} (Archive ID: {d.ArchiveId})";
+            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Failed, d.Reason);
             ThemedDialog.ShowInfo(this, "분석 배정 실패",
                 $"분석 작업을 배정할 워크스테이션을 찾지 못했습니다.\n\n사유: {d.Reason}",
                 (Brush)Application.Current.Resources["Accent"]);
@@ -1098,6 +1186,8 @@ public partial class TransferSettingsWindow : Window
             StatusText.Text = d.Success
                 ? $"분석 완료: worker={d.WorkerId} (Archive ID: {d.ArchiveId}) -- 결과는 사무실에서 확인하세요."
                 : $"분석 실패: worker={d.WorkerId} (Archive ID: {d.ArchiveId})";
+            SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, d.Success ? StageState.Done : StageState.Failed);
+            SetStage(StageDoneDot, StageDoneLabel, d.Success ? StageState.Done : StageState.Failed);
             ThemedDialog.ShowInfo(this, d.Success ? "분석 완료" : "분석 실패",
                 d.Success
                     ? $"Archive ID {d.ArchiveId}의 분석이 완료되었습니다.\n상세 결과는 사무실 CheckCrackViewer 화면에서 확인하세요."

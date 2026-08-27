@@ -176,7 +176,49 @@
             </StackPanel>
 
             <ProgressBar x:Name="TransferProgressBar" Height="18" Minimum="0" Maximum="100" Margin="0,0,0,6"/>
-            <TextBlock x:Name="StatusText" Foreground="{StaticResource Text2}" TextWrapping="Wrap"/>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+            <!-- 진행 단계 패널 (2026-08-27): "분석 시작" 확인을 팝업이 아니라 이 창 안에,
+                 저장 완료 아래 항상 보이는 전용 섹션으로 표시해달라는 요청. 5단계(전송/저장 처리/
+                 분석 대기/분석 진행/완료) 각각을 SetStage()로 갱신: Pending(회색)/Active(주황,
+                 굵게)/Done(초록, 체크)/Failed(빨강, X). "분석 대기" 단계에서만 예/아니오 버튼이
+                 인라인으로 나타남(기존 ThemedDialog.ShowConfirm 팝업 대체). -->
+            <Border x:Name="ProgressStagePanel" Background="{StaticResource Surface2}" CornerRadius="6" Padding="10,8" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="진행 단계" FontWeight="Bold" FontSize="11" Foreground="{StaticResource Text2}" Margin="0,0,0,6"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <Ellipse x:Name="StageTransferDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StageTransferLabel" Text="전송" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <Ellipse x:Name="StageStorageDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StageStorageLabel" Text="저장 처리" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,0,0,5">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="StageAnalysisWaitDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="StageAnalysisWaitLabel" Text="분석 대기" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel x:Name="AnalysisConfirmPanel" Orientation="Horizontal" Margin="17,5,0,0" Visibility="Collapsed">
+                            <Button x:Name="AnalysisStartYesButton" Content="예, 분석 시작" Padding="8,3" Margin="0,0,6,0" Click="OnAnalysisStartYesClick"/>
+                            <Button x:Name="AnalysisStartNoButton" Content="아니오" Padding="8,3" Click="OnAnalysisStartNoClick"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <Ellipse x:Name="StageAnalysisRunDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StageAnalysisRunLabel" Text="분석 진행" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="StageDoneDot" Width="9" Height="9" Fill="{StaticResource Text2}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StageDoneLabel" Text="완료" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </StackPanel>
 
         <!-- 전송 전 사진 검토 패널. 체크 해제는 원본 파일을 지우지 않고 이번 전송에서만 제외한다
