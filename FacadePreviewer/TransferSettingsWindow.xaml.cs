@@ -108,6 +108,8 @@ public partial class TransferSettingsWindow : Window
     private readonly string _ddsHost;
     private readonly int _ddsPort;
     private readonly string _ddsLocalInterface;
+    private readonly string _contractId;
+    private readonly string _customerName;
 
     private RsyncTransferService? _transfer;
     private FacadeStorageStatusService? _storageStatus;
@@ -166,13 +168,23 @@ public partial class TransferSettingsWindow : Window
     // 왼쪽 설정 패널(520px)의 내용/배치는 절대 변경하지 않는다.
     private const double ReviewHiddenWindowWidth = 570.0;
 
-    public TransferSettingsWindow(string ddsHost, int ddsPort, string ddsLocalInterface)
+    /// <param name="contractId">2026-08-28: passed in from MainWindow's LoadedAssignment (the
+    /// GenerateJson-produced ApartmentAssignment the operator already loaded for 동/측정 장소) --
+    /// this window's own 회사/동 dropdowns are a separate, admin-curated list
+    /// (config/facade_targets.json), so contract_id/customer_name can't be derived from those
+    /// selections and must be threaded in from the caller instead. "" when no assignment was
+    /// loaded (or it predates this field) -- SendRequirements then declares no contract, same as
+    /// before this existed.</param>
+    public TransferSettingsWindow(string ddsHost, int ddsPort, string ddsLocalInterface,
+        string contractId = "", string customerName = "")
     {
         InitializeComponent();
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
         _ddsHost = ddsHost;
         _ddsPort = ddsPort;
         _ddsLocalInterface = ddsLocalInterface;
+        _contractId = contractId;
+        _customerName = customerName;
 
         // facade_analysis_msgs on domain 30 -- a different participant/domain from the domain-0
         // one _storageStatus uses per-transfer, so it's started once here for the window's whole
@@ -590,7 +602,7 @@ public partial class TransferSettingsWindow : Window
         var requirementCounts = plan
             .Select(p => (p.Direction, Directory.EnumerateFiles(p.LocalFolder).Count() - GetExcludedCount(p.Direction)))
             .ToList();
-        var registered = _storageStatus?.SendRequirements(company, building, requirementCounts) ?? false;
+        var registered = _storageStatus?.SendRequirements(company, building, requirementCounts, _contractId, _customerName) ?? false;
         if (!registered)
             StatusText.Text = "CrackVisionDB 방향 세트 등록 실패 (계속 진행 -- 자동 zip 아카이빙만 비활성됩니다).";
 

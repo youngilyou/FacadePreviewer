@@ -83,12 +83,20 @@ module facade_storage_msgs {
     // expected image count per direction instead of just presence, so it waits for every declared
     // file, not just the first one per direction. FacadePreviewer computes this by counting files
     // in the local folder it is about to send for each direction, before the transfer starts.
+    // [YYIL] 2026-08-28: contract_id/customer_name added -- 계약(신청서) 연동. FacadePreviewer
+    // reads these from the GenerateJson-produced ApartmentAssignment file it already loads for
+    // 동/측정 장소 (see ApartmentAssignment.cs), NOT operator-entered here. Both empty ("") when
+    // the loaded assignment predates this field or wasn't loaded via a contract at all -- backend
+    // stores them as-is (empty stays empty in facade_building_requirements/crackvision_archives,
+    // no fabricated placeholder).
     struct FacadeStorageRequirements {
       string company;
       string building;
       sequence<string> required_directions;
       sequence<unsigned long> required_counts;
       long long requested_at_epoch_ms;
+      string contract_id;
+      string customer_name;
     };
 
     // FacadePreviewer -> MngData. Operator-confirmed "this is everything for this building" signal

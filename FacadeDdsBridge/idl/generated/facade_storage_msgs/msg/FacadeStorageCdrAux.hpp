@@ -24,19 +24,19 @@
 
 #include "FacadeStorage.hpp"
 
-constexpr uint32_t facade_storage_msgs_msg_FacadeStorageCancelRequest_max_cdr_typesize {536UL};
+constexpr uint32_t facade_storage_msgs_msg_FacadeStorageCancelRequest_max_cdr_typesize {528UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageCancelRequest_max_key_cdr_typesize {0UL};
 
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageResult_max_cdr_typesize {1080UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageResult_max_key_cdr_typesize {0UL};
 
-constexpr uint32_t facade_storage_msgs_msg_FacadeStorageRequirements_max_cdr_typesize {544UL};
+constexpr uint32_t facade_storage_msgs_msg_FacadeStorageRequirements_max_cdr_typesize {1064UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageRequirements_max_key_cdr_typesize {0UL};
 
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFeedback_max_cdr_typesize {800UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFeedback_max_key_cdr_typesize {0UL};
 
-constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFinalizeRequest_max_cdr_typesize {536UL};
+constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFinalizeRequest_max_cdr_typesize {528UL};
 constexpr uint32_t facade_storage_msgs_msg_FacadeStorageFinalizeRequest_max_key_cdr_typesize {0UL};
 
 

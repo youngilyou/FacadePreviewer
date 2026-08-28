@@ -99,10 +99,11 @@ bool FacadeStorageStatus_SendCancelRequest(void* handle, const char* company, co
 }
 
 bool FacadeStorageStatus_SendRequirements(void* handle, const char* company, const char* building,
-        const char* required_directions_csv, const char* required_counts_csv)
+        const char* required_directions_csv, const char* required_counts_csv,
+        const char* contract_id, const char* customer_name)
 {
     return static_cast<FacadeStorageStatus*>(handle)->SendRequirements(company, building, required_directions_csv,
-            required_counts_csv);
+            required_counts_csv, contract_id, customer_name);
 }
 
 bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, const char* building)

@@ -206,7 +206,12 @@ public partial class MainWindow : Window
         // (Feedback/Result/CancelRequest) needs to reach the same MngData/DDS-Router host, so
         // there is no separate set of connection fields to fill in on this dialog.
         var vm = DataContext as MainViewModel;
-        var window = new TransferSettingsWindow(vm?.DdsRouterHost ?? "", vm?.DdsRouterPort ?? 7410, vm?.LocalInterfaceIp ?? "")
+        // 2026-08-28: ContractId/CustomerName -- pre-baked into the GenerateJson-produced
+        // ApartmentAssignment the operator loaded here (LoadedAssignment), passed through so
+        // TransferSettingsWindow's SendRequirements can tag them even though its own 회사/동
+        // dropdowns come from a separate list (config/facade_targets.json).
+        var window = new TransferSettingsWindow(vm?.DdsRouterHost ?? "", vm?.DdsRouterPort ?? 7410, vm?.LocalInterfaceIp ?? "",
+            vm?.LoadedAssignment?.ContractId ?? "", vm?.LoadedAssignment?.CustomerName ?? "")
             { Owner = this };
         window.Show();
     }

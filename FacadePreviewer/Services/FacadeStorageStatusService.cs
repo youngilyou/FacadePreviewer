@@ -90,13 +90,18 @@ public sealed class FacadeStorageStatusService : IDisposable
     // the instant the LAST direction's very first image lands (see FacadeStorage.idl's own
     // comment on required_counts for the real test that found this). Pass 0 for a direction
     // whose count is unknown -- that direction falls back to presence-only on the server.
-    public bool SendRequirements(string company, string building, IEnumerable<(string Direction, int Count)> requirements)
+    /// <param name="contractId">2026-08-28: pre-baked into the GenerateJson-produced
+    /// ApartmentAssignment file the operator loaded (see ApartmentAssignment.cs) -- pass "" (the
+    /// default) when no contract is loaded/known.</param>
+    public bool SendRequirements(string company, string building, IEnumerable<(string Direction, int Count)> requirements,
+        string contractId = "", string customerName = "")
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var list = requirements.ToList();
         var directionsCsv = string.Join(',', list.Select(r => r.Direction));
         var countsCsv = string.Join(',', list.Select(r => r.Count));
-        return DdsBridgeInterop.FacadeStorageStatus_SendRequirements(_handle, company, building, directionsCsv, countsCsv);
+        return DdsBridgeInterop.FacadeStorageStatus_SendRequirements(_handle, company, building, directionsCsv, countsCsv,
+            contractId, customerName);
     }
 
     // PtrToStringUTF8, not PtrToStringAnsi -- Company/Building can be non-ASCII (Korean); the

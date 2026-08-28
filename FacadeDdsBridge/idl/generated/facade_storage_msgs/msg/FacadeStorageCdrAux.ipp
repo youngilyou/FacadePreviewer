@@ -47,7 +47,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
     eprosima::fastcdr::EncodingAlgorithmFlag previous_encoding = calculator.get_encoding();
     size_t calculated_size {calculator.begin_calculate_type_serialized_size(
                                 eprosima::fastcdr::CdrVersion::XCDRv2 == calculator.get_cdr_version() ?
-                                eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+                                eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
                                 eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
                                 current_alignment)};
 
@@ -86,7 +86,7 @@ eProsima_user_DllExport void serialize(
     eprosima::fastcdr::Cdr::state current_state(scdr);
     scdr.begin_serialize_type(current_state,
             eprosima::fastcdr::CdrVersion::XCDRv2 == scdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR);
 
     scdr
@@ -108,7 +108,7 @@ eProsima_user_DllExport void deserialize(
     using namespace facade_storage_msgs::msg;
 
     cdr.deserialize_type(eprosima::fastcdr::CdrVersion::XCDRv2 == cdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
             [&data](eprosima::fastcdr::Cdr& dcdr, const eprosima::fastcdr::MemberId& mid) -> bool
             {
@@ -183,7 +183,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
     eprosima::fastcdr::EncodingAlgorithmFlag previous_encoding = calculator.get_encoding();
     size_t calculated_size {calculator.begin_calculate_type_serialized_size(
                                 eprosima::fastcdr::CdrVersion::XCDRv2 == calculator.get_cdr_version() ?
-                                eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+                                eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
                                 eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
                                 current_alignment)};
 
@@ -234,7 +234,7 @@ eProsima_user_DllExport void serialize(
     eprosima::fastcdr::Cdr::state current_state(scdr);
     scdr.begin_serialize_type(current_state,
             eprosima::fastcdr::CdrVersion::XCDRv2 == scdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR);
 
     scdr
@@ -260,7 +260,7 @@ eProsima_user_DllExport void deserialize(
     using namespace facade_storage_msgs::msg;
 
     cdr.deserialize_type(eprosima::fastcdr::CdrVersion::XCDRv2 == cdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
             [&data](eprosima::fastcdr::Cdr& dcdr, const eprosima::fastcdr::MemberId& mid) -> bool
             {
@@ -359,7 +359,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
     eprosima::fastcdr::EncodingAlgorithmFlag previous_encoding = calculator.get_encoding();
     size_t calculated_size {calculator.begin_calculate_type_serialized_size(
                                 eprosima::fastcdr::CdrVersion::XCDRv2 == calculator.get_cdr_version() ?
-                                eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+                                eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
                                 eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
                                 current_alignment)};
 
@@ -389,7 +389,7 @@ eProsima_user_DllExport void serialize(
     eprosima::fastcdr::Cdr::state current_state(scdr);
     scdr.begin_serialize_type(current_state,
             eprosima::fastcdr::CdrVersion::XCDRv2 == scdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR);
 
     scdr
@@ -408,7 +408,7 @@ eProsima_user_DllExport void deserialize(
     using namespace facade_storage_msgs::msg;
 
     cdr.deserialize_type(eprosima::fastcdr::CdrVersion::XCDRv2 == cdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
             [&data](eprosima::fastcdr::Cdr& dcdr, const eprosima::fastcdr::MemberId& mid) -> bool
             {
@@ -465,7 +465,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
     eprosima::fastcdr::EncodingAlgorithmFlag previous_encoding = calculator.get_encoding();
     size_t calculated_size {calculator.begin_calculate_type_serialized_size(
                                 eprosima::fastcdr::CdrVersion::XCDRv2 == calculator.get_cdr_version() ?
-                                eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+                                eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
                                 eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
                                 current_alignment)};
 
@@ -485,6 +485,12 @@ eProsima_user_DllExport size_t calculate_serialized_size(
         calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(4),
                 data.requested_at_epoch_ms(), current_alignment);
 
+        calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(5),
+                data.contract_id(), current_alignment);
+
+        calculated_size += calculator.calculate_member_serialized_size(eprosima::fastcdr::MemberId(6),
+                data.customer_name(), current_alignment);
+
 
     calculated_size += calculator.end_calculate_type_serialized_size(previous_encoding, current_alignment);
 
@@ -501,7 +507,7 @@ eProsima_user_DllExport void serialize(
     eprosima::fastcdr::Cdr::state current_state(scdr);
     scdr.begin_serialize_type(current_state,
             eprosima::fastcdr::CdrVersion::XCDRv2 == scdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR);
 
     scdr
@@ -510,6 +516,8 @@ eProsima_user_DllExport void serialize(
         << eprosima::fastcdr::MemberId(2) << data.required_directions()
         << eprosima::fastcdr::MemberId(3) << data.required_counts()
         << eprosima::fastcdr::MemberId(4) << data.requested_at_epoch_ms()
+        << eprosima::fastcdr::MemberId(5) << data.contract_id()
+        << eprosima::fastcdr::MemberId(6) << data.customer_name()
 ;
     scdr.end_serialize_type(current_state);
 }
@@ -522,7 +530,7 @@ eProsima_user_DllExport void deserialize(
     using namespace facade_storage_msgs::msg;
 
     cdr.deserialize_type(eprosima::fastcdr::CdrVersion::XCDRv2 == cdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
             [&data](eprosima::fastcdr::Cdr& dcdr, const eprosima::fastcdr::MemberId& mid) -> bool
             {
@@ -547,6 +555,14 @@ eProsima_user_DllExport void deserialize(
 
                                         case 4:
                                                 dcdr >> data.requested_at_epoch_ms();
+                                            break;
+
+                                        case 5:
+                                                dcdr >> data.contract_id();
+                                            break;
+
+                                        case 6:
+                                                dcdr >> data.customer_name();
                                             break;
 
                     default:
@@ -575,6 +591,10 @@ void serialize_key(
 
                         scdr << data.requested_at_epoch_ms();
 
+                        scdr << data.contract_id();
+
+                        scdr << data.customer_name();
+
 }
 
 
@@ -591,7 +611,7 @@ eProsima_user_DllExport size_t calculate_serialized_size(
     eprosima::fastcdr::EncodingAlgorithmFlag previous_encoding = calculator.get_encoding();
     size_t calculated_size {calculator.begin_calculate_type_serialized_size(
                                 eprosima::fastcdr::CdrVersion::XCDRv2 == calculator.get_cdr_version() ?
-                                eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+                                eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
                                 eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
                                 current_alignment)};
 
@@ -621,7 +641,7 @@ eProsima_user_DllExport void serialize(
     eprosima::fastcdr::Cdr::state current_state(scdr);
     scdr.begin_serialize_type(current_state,
             eprosima::fastcdr::CdrVersion::XCDRv2 == scdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR);
 
     scdr
@@ -640,7 +660,7 @@ eProsima_user_DllExport void deserialize(
     using namespace facade_storage_msgs::msg;
 
     cdr.deserialize_type(eprosima::fastcdr::CdrVersion::XCDRv2 == cdr.get_cdr_version() ?
-            eprosima::fastcdr::EncodingAlgorithmFlag::DELIMIT_CDR2 :
+            eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR2 :
             eprosima::fastcdr::EncodingAlgorithmFlag::PLAIN_CDR,
             [&data](eprosima::fastcdr::Cdr& dcdr, const eprosima::fastcdr::MemberId& mid) -> bool
             {

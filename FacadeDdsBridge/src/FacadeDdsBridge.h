@@ -59,7 +59,8 @@ FACADE_API bool FacadeStorageStatus_Start(void* handle, int domain_id, const cha
 FACADE_API void FacadeStorageStatus_Stop(void* handle);
 FACADE_API bool FacadeStorageStatus_SendCancelRequest(void* handle, const char* company, const char* building);
 FACADE_API bool FacadeStorageStatus_SendRequirements(void* handle, const char* company, const char* building,
-        const char* required_directions_csv, const char* required_counts_csv);
+        const char* required_directions_csv, const char* required_counts_csv,
+        const char* contract_id, const char* customer_name);
 FACADE_API bool FacadeStorageStatus_SendFinalizeRequest(void* handle, const char* company, const char* building);
 
 // facade_analysis_msgs crack-inspection remote analysis dispatch (domain 30, see

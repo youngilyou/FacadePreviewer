@@ -48,12 +48,12 @@ void register_FacadeStorageFeedback_type_identifier(
     ReturnCode_t return_code_FacadeStorageFeedback {eprosima::fastdds::dds::RETCODE_OK};
     return_code_FacadeStorageFeedback =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "facade_storage_msgs::msg::FacadeStorageFeedback", type_ids_FacadeStorageFeedback);
+        "facade_storage_msgs::msg::dds_::FacadeStorageFeedback_", type_ids_FacadeStorageFeedback);
     if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageFeedback)
     {
-        StructTypeFlag struct_flags_FacadeStorageFeedback = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        StructTypeFlag struct_flags_FacadeStorageFeedback = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::FINAL,
                 false, false);
-        QualifiedTypeName type_name_FacadeStorageFeedback = "facade_storage_msgs::msg::FacadeStorageFeedback";
+        QualifiedTypeName type_name_FacadeStorageFeedback = "facade_storage_msgs::msg::dds_::FacadeStorageFeedback_";
         eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageFeedback;
         eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageFeedback;
         CompleteTypeDetail detail_FacadeStorageFeedback = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageFeedback, ann_custom_FacadeStorageFeedback, type_name_FacadeStorageFeedback.to_string());
@@ -281,12 +281,12 @@ void register_FacadeStorageResult_type_identifier(
     ReturnCode_t return_code_FacadeStorageResult {eprosima::fastdds::dds::RETCODE_OK};
     return_code_FacadeStorageResult =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "facade_storage_msgs::msg::FacadeStorageResult", type_ids_FacadeStorageResult);
+        "facade_storage_msgs::msg::dds_::FacadeStorageResult_", type_ids_FacadeStorageResult);
     if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageResult)
     {
-        StructTypeFlag struct_flags_FacadeStorageResult = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        StructTypeFlag struct_flags_FacadeStorageResult = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::FINAL,
                 false, false);
-        QualifiedTypeName type_name_FacadeStorageResult = "facade_storage_msgs::msg::FacadeStorageResult";
+        QualifiedTypeName type_name_FacadeStorageResult = "facade_storage_msgs::msg::dds_::FacadeStorageResult_";
         eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageResult;
         eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageResult;
         CompleteTypeDetail detail_FacadeStorageResult = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageResult, ann_custom_FacadeStorageResult, type_name_FacadeStorageResult.to_string());
@@ -642,12 +642,12 @@ void register_FacadeStorageCancelRequest_type_identifier(
     ReturnCode_t return_code_FacadeStorageCancelRequest {eprosima::fastdds::dds::RETCODE_OK};
     return_code_FacadeStorageCancelRequest =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "facade_storage_msgs::msg::FacadeStorageCancelRequest", type_ids_FacadeStorageCancelRequest);
+        "facade_storage_msgs::msg::dds_::FacadeStorageCancelRequest_", type_ids_FacadeStorageCancelRequest);
     if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageCancelRequest)
     {
-        StructTypeFlag struct_flags_FacadeStorageCancelRequest = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        StructTypeFlag struct_flags_FacadeStorageCancelRequest = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::FINAL,
                 false, false);
-        QualifiedTypeName type_name_FacadeStorageCancelRequest = "facade_storage_msgs::msg::FacadeStorageCancelRequest";
+        QualifiedTypeName type_name_FacadeStorageCancelRequest = "facade_storage_msgs::msg::dds_::FacadeStorageCancelRequest_";
         eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageCancelRequest;
         eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageCancelRequest;
         CompleteTypeDetail detail_FacadeStorageCancelRequest = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageCancelRequest, ann_custom_FacadeStorageCancelRequest, type_name_FacadeStorageCancelRequest.to_string());
@@ -777,12 +777,12 @@ void register_FacadeStorageRequirements_type_identifier(
     ReturnCode_t return_code_FacadeStorageRequirements {eprosima::fastdds::dds::RETCODE_OK};
     return_code_FacadeStorageRequirements =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "facade_storage_msgs::msg::FacadeStorageRequirements", type_ids_FacadeStorageRequirements);
+        "facade_storage_msgs::msg::dds_::FacadeStorageRequirements_", type_ids_FacadeStorageRequirements);
     if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageRequirements)
     {
-        StructTypeFlag struct_flags_FacadeStorageRequirements = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        StructTypeFlag struct_flags_FacadeStorageRequirements = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::FINAL,
                 false, false);
-        QualifiedTypeName type_name_FacadeStorageRequirements = "facade_storage_msgs::msg::FacadeStorageRequirements";
+        QualifiedTypeName type_name_FacadeStorageRequirements = "facade_storage_msgs::msg::dds_::FacadeStorageRequirements_";
         eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageRequirements;
         eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageRequirements;
         CompleteTypeDetail detail_FacadeStorageRequirements = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageRequirements, ann_custom_FacadeStorageRequirements, type_name_FacadeStorageRequirements.to_string());
@@ -1027,6 +1027,82 @@ void register_FacadeStorageRequirements_type_identifier(
             CompleteStructMember member_requested_at_epoch_ms = TypeObjectUtils::build_complete_struct_member(common_requested_at_epoch_ms, detail_requested_at_epoch_ms);
             TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageRequirements, member_requested_at_epoch_ms);
         }
+        {
+            TypeIdentifierPair type_ids_contract_id;
+            ReturnCode_t return_code_contract_id {eprosima::fastdds::dds::RETCODE_OK};
+            return_code_contract_id =
+                eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+                "anonymous_string_unbounded", type_ids_contract_id);
+
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_contract_id)
+            {
+                {
+                    SBound bound = 0;
+                    StringSTypeDefn string_sdefn = TypeObjectUtils::build_string_s_type_defn(bound);
+                    if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
+                            TypeObjectUtils::build_and_register_s_string_type_identifier(string_sdefn,
+                            "anonymous_string_unbounded", type_ids_contract_id))
+                    {
+                        EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                            "anonymous_string_unbounded already registered in TypeObjectRegistry for a different type.");
+                    }
+                }
+            }
+            StructMemberFlag member_flags_contract_id = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+                    false, false, false, false);
+            MemberId member_id_contract_id = 0x00000005;
+            bool common_contract_id_ec {false};
+            CommonStructMember common_contract_id {TypeObjectUtils::build_common_struct_member(member_id_contract_id, member_flags_contract_id, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_contract_id, common_contract_id_ec))};
+            if (!common_contract_id_ec)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION, "Structure contract_id member TypeIdentifier inconsistent.");
+                return;
+            }
+            MemberName name_contract_id = "contract_id";
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_contract_id;
+            ann_custom_FacadeStorageRequirements.reset();
+            CompleteMemberDetail detail_contract_id = TypeObjectUtils::build_complete_member_detail(name_contract_id, member_ann_builtin_contract_id, ann_custom_FacadeStorageRequirements);
+            CompleteStructMember member_contract_id = TypeObjectUtils::build_complete_struct_member(common_contract_id, detail_contract_id);
+            TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageRequirements, member_contract_id);
+        }
+        {
+            TypeIdentifierPair type_ids_customer_name;
+            ReturnCode_t return_code_customer_name {eprosima::fastdds::dds::RETCODE_OK};
+            return_code_customer_name =
+                eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
+                "anonymous_string_unbounded", type_ids_customer_name);
+
+            if (eprosima::fastdds::dds::RETCODE_OK != return_code_customer_name)
+            {
+                {
+                    SBound bound = 0;
+                    StringSTypeDefn string_sdefn = TypeObjectUtils::build_string_s_type_defn(bound);
+                    if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
+                            TypeObjectUtils::build_and_register_s_string_type_identifier(string_sdefn,
+                            "anonymous_string_unbounded", type_ids_customer_name))
+                    {
+                        EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION,
+                            "anonymous_string_unbounded already registered in TypeObjectRegistry for a different type.");
+                    }
+                }
+            }
+            StructMemberFlag member_flags_customer_name = TypeObjectUtils::build_struct_member_flag(eprosima::fastdds::dds::xtypes::TryConstructFailAction::DISCARD,
+                    false, false, false, false);
+            MemberId member_id_customer_name = 0x00000006;
+            bool common_customer_name_ec {false};
+            CommonStructMember common_customer_name {TypeObjectUtils::build_common_struct_member(member_id_customer_name, member_flags_customer_name, TypeObjectUtils::retrieve_complete_type_identifier(type_ids_customer_name, common_customer_name_ec))};
+            if (!common_customer_name_ec)
+            {
+                EPROSIMA_LOG_ERROR(XTYPES_TYPE_REPRESENTATION, "Structure customer_name member TypeIdentifier inconsistent.");
+                return;
+            }
+            MemberName name_customer_name = "customer_name";
+            eprosima::fastcdr::optional<AppliedBuiltinMemberAnnotations> member_ann_builtin_customer_name;
+            ann_custom_FacadeStorageRequirements.reset();
+            CompleteMemberDetail detail_customer_name = TypeObjectUtils::build_complete_member_detail(name_customer_name, member_ann_builtin_customer_name, ann_custom_FacadeStorageRequirements);
+            CompleteStructMember member_customer_name = TypeObjectUtils::build_complete_struct_member(common_customer_name, detail_customer_name);
+            TypeObjectUtils::add_complete_struct_member(member_seq_FacadeStorageRequirements, member_customer_name);
+        }
         CompleteStructType struct_type_FacadeStorageRequirements = TypeObjectUtils::build_complete_struct_type(struct_flags_FacadeStorageRequirements, header_FacadeStorageRequirements, member_seq_FacadeStorageRequirements);
         if (eprosima::fastdds::dds::RETCODE_BAD_PARAMETER ==
                 TypeObjectUtils::build_and_register_struct_type_object(struct_type_FacadeStorageRequirements, type_name_FacadeStorageRequirements.to_string(), type_ids_FacadeStorageRequirements))
@@ -1044,12 +1120,12 @@ void register_FacadeStorageFinalizeRequest_type_identifier(
     ReturnCode_t return_code_FacadeStorageFinalizeRequest {eprosima::fastdds::dds::RETCODE_OK};
     return_code_FacadeStorageFinalizeRequest =
         eprosima::fastdds::dds::DomainParticipantFactory::get_instance()->type_object_registry().get_type_identifiers(
-        "facade_storage_msgs::msg::FacadeStorageFinalizeRequest", type_ids_FacadeStorageFinalizeRequest);
+        "facade_storage_msgs::msg::dds_::FacadeStorageFinalizeRequest_", type_ids_FacadeStorageFinalizeRequest);
     if (eprosima::fastdds::dds::RETCODE_OK != return_code_FacadeStorageFinalizeRequest)
     {
-        StructTypeFlag struct_flags_FacadeStorageFinalizeRequest = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::APPENDABLE,
+        StructTypeFlag struct_flags_FacadeStorageFinalizeRequest = TypeObjectUtils::build_struct_type_flag(eprosima::fastdds::dds::xtypes::ExtensibilityKind::FINAL,
                 false, false);
-        QualifiedTypeName type_name_FacadeStorageFinalizeRequest = "facade_storage_msgs::msg::FacadeStorageFinalizeRequest";
+        QualifiedTypeName type_name_FacadeStorageFinalizeRequest = "facade_storage_msgs::msg::dds_::FacadeStorageFinalizeRequest_";
         eprosima::fastcdr::optional<AppliedBuiltinTypeAnnotations> type_ann_builtin_FacadeStorageFinalizeRequest;
         eprosima::fastcdr::optional<AppliedAnnotationSeq> ann_custom_FacadeStorageFinalizeRequest;
         CompleteTypeDetail detail_FacadeStorageFinalizeRequest = TypeObjectUtils::build_complete_type_detail(type_ann_builtin_FacadeStorageFinalizeRequest, ann_custom_FacadeStorageFinalizeRequest, type_name_FacadeStorageFinalizeRequest.to_string());

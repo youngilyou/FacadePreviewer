@@ -320,7 +320,7 @@ bool FacadeStorageStatus::SendCancelRequest(const char* company, const char* bui
 }
 
 bool FacadeStorageStatus::SendRequirements(const char* company, const char* building, const char* required_directions_csv,
-        const char* required_counts_csv)
+        const char* required_counts_csv, const char* contract_id, const char* customer_name)
 {
     if (!impl_->requirements_writer)
         return false;
@@ -362,5 +362,7 @@ bool FacadeStorageStatus::SendRequirements(const char* company, const char* buil
     request.required_counts(counts);
     request.requested_at_epoch_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count());
+    request.contract_id(contract_id ? contract_id : "");
+    request.customer_name(customer_name ? customer_name : "");
     return impl_->requirements_writer->write(&request) == RETCODE_OK;
 }

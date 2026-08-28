@@ -22,6 +22,13 @@ public sealed class ApartmentAssignment
     [JsonPropertyName("Buildings")] public List<string> Buildings { get; set; } = new();
     [JsonPropertyName("Directions")] public List<string> Directions { get; set; } = new();
 
+    // 2026-08-28: 계약(신청서) 연동 -- GenerateJson이 계약 체결 시 미리 박아두는 값
+    // (SC_YYYYMMDD_NNN 형식 contract_id + 고객명), 운용자가 여기서 직접 입력/수정하지 않음.
+    // 구버전 assignment json(이 필드들 자체가 없는 파일)도 그대로 로드되도록 기본값은 빈 문자열 --
+    // SendRequirements가 그대로 ""를 보내면 backend는 "계약 미연동"으로 취급(지어내지 않음).
+    [JsonPropertyName("ContractId")] public string ContractId { get; set; } = "";
+    [JsonPropertyName("CustomerName")] public string CustomerName { get; set; } = "";
+
     /// <summary>실패 시 null(파일 없음/손상 -- 다른 로더들과 동일한 "절대 throw 안 함" 관례).
     /// Topic이 비어 있으면 구독할 게 없는 것과 마찬가지라 역시 null로 취급.</summary>
     public static ApartmentAssignment? Load(string path)

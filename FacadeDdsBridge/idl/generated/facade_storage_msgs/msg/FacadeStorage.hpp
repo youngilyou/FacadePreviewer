@@ -1147,6 +1147,10 @@ public:
 
                     m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
 
+                    m_contract_id = x.m_contract_id;
+
+                    m_customer_name = x.m_customer_name;
+
     }
 
     /*!
@@ -1161,6 +1165,8 @@ public:
         m_required_directions = std::move(x.m_required_directions);
         m_required_counts = std::move(x.m_required_counts);
         m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+        m_contract_id = std::move(x.m_contract_id);
+        m_customer_name = std::move(x.m_customer_name);
     }
 
     /*!
@@ -1181,6 +1187,10 @@ public:
 
                     m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
 
+                    m_contract_id = x.m_contract_id;
+
+                    m_customer_name = x.m_customer_name;
+
         return *this;
     }
 
@@ -1197,6 +1207,8 @@ public:
         m_required_directions = std::move(x.m_required_directions);
         m_required_counts = std::move(x.m_required_counts);
         m_requested_at_epoch_ms = x.m_requested_at_epoch_ms;
+        m_contract_id = std::move(x.m_contract_id);
+        m_customer_name = std::move(x.m_customer_name);
         return *this;
     }
 
@@ -1211,7 +1223,9 @@ public:
            m_building == x.m_building &&
            m_required_directions == x.m_required_directions &&
            m_required_counts == x.m_required_counts &&
-           m_requested_at_epoch_ms == x.m_requested_at_epoch_ms);
+           m_requested_at_epoch_ms == x.m_requested_at_epoch_ms &&
+           m_contract_id == x.m_contract_id &&
+           m_customer_name == x.m_customer_name);
     }
 
     /*!
@@ -1409,6 +1423,84 @@ public:
     }
 
 
+    /*!
+     * @brief This function copies the value in member contract_id
+     * @param _contract_id New value to be copied in member contract_id
+     */
+    eProsima_user_DllExport void contract_id(
+            const std::string& _contract_id)
+    {
+        m_contract_id = _contract_id;
+    }
+
+    /*!
+     * @brief This function moves the value in member contract_id
+     * @param _contract_id New value to be moved in member contract_id
+     */
+    eProsima_user_DllExport void contract_id(
+            std::string&& _contract_id)
+    {
+        m_contract_id = std::move(_contract_id);
+    }
+
+    /*!
+     * @brief This function returns a constant reference to member contract_id
+     * @return Constant reference to member contract_id
+     */
+    eProsima_user_DllExport const std::string& contract_id() const
+    {
+        return m_contract_id;
+    }
+
+    /*!
+     * @brief This function returns a reference to member contract_id
+     * @return Reference to member contract_id
+     */
+    eProsima_user_DllExport std::string& contract_id()
+    {
+        return m_contract_id;
+    }
+
+
+    /*!
+     * @brief This function copies the value in member customer_name
+     * @param _customer_name New value to be copied in member customer_name
+     */
+    eProsima_user_DllExport void customer_name(
+            const std::string& _customer_name)
+    {
+        m_customer_name = _customer_name;
+    }
+
+    /*!
+     * @brief This function moves the value in member customer_name
+     * @param _customer_name New value to be moved in member customer_name
+     */
+    eProsima_user_DllExport void customer_name(
+            std::string&& _customer_name)
+    {
+        m_customer_name = std::move(_customer_name);
+    }
+
+    /*!
+     * @brief This function returns a constant reference to member customer_name
+     * @return Constant reference to member customer_name
+     */
+    eProsima_user_DllExport const std::string& customer_name() const
+    {
+        return m_customer_name;
+    }
+
+    /*!
+     * @brief This function returns a reference to member customer_name
+     * @return Reference to member customer_name
+     */
+    eProsima_user_DllExport std::string& customer_name()
+    {
+        return m_customer_name;
+    }
+
+
 
 private:
 
@@ -1417,6 +1509,8 @@ private:
     std::vector<std::string> m_required_directions;
     std::vector<uint32_t> m_required_counts;
     int64_t m_requested_at_epoch_ms{0};
+    std::string m_contract_id;
+    std::string m_customer_name;
 
 };
 /*!

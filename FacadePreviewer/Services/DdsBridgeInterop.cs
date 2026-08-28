@@ -223,7 +223,8 @@ internal static class DdsBridgeInterop
     public static extern bool FacadeStorageStatus_SendRequirements(IntPtr handle,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string company, [MarshalAs(UnmanagedType.LPUTF8Str)] string building,
         [MarshalAs(UnmanagedType.LPStr)] string requiredDirectionsCsv,
-        [MarshalAs(UnmanagedType.LPStr)] string requiredCountsCsv);
+        [MarshalAs(UnmanagedType.LPStr)] string requiredCountsCsv,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string contractId, [MarshalAs(UnmanagedType.LPUTF8Str)] string customerName);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]

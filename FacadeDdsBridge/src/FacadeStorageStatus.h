@@ -85,8 +85,12 @@ public:
     // been seen at all", see FacadeStorage.idl's own comment on required_counts for why this
     // matters. Pass "" (or a mismatched-length string) to declare no counts -- the server then
     // falls back to presence-only for every direction in this call, same as before this existed.
+    // contract_id/customer_name (2026-08-28): pre-baked into the GenerateJson-produced
+    // ApartmentAssignment file the operator loaded (see ApartmentAssignment.cs), not
+    // operator-entered here. Pass "" for either when no contract is loaded/known -- backend
+    // stores them as-is, no fabricated placeholder (see FacadeStorage.idl's own comment).
     bool SendRequirements(const char* company, const char* building, const char* required_directions_csv,
-            const char* required_counts_csv = "");
+            const char* required_counts_csv = "", const char* contract_id = "", const char* customer_name = "");
 
 private:
     struct Impl;
