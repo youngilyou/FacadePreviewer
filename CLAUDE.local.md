@@ -1265,3 +1265,33 @@ CRT 수정 위에 `RsyncTransfer.h/.cpp`/`FacadeRsync_*` C API/`RsyncTransferSer
 즉 앞으로 previewer가 native `colmap.exe`를 직접 빌드/실행한다고 가정하는 코드나 문서는
 전부 이 업데이트로 무효 — `tools/colmap_deps/`, `Get-ColmapDeps.ps1` 참고는 모두 과거
 기록으로만 남기고 삭제됨.
+
+## 2026-08-28: 계약 ID(contract_id/customer_name) DDS 전파 + 로그인 화면 라이트 테마 전환
+
+**계약 ID 전파**: CrackVisionDB(backend_core)에 `contract_id`/`customer_name` 컬럼이 추가되면서
+(설계는 MngData/backend_core 쪽에서 확정, 자세한 내용은 그쪽 CLAUDE.local.md 참고), FacadePreviewer가
+DDS로 이 값을 실어 보내야 했음. `FacadeDdsBridge/idl/facade_storage_msgs/msg/FacadeStorage.idl`의
+`FacadeStorageRequirements`에 `contract_id`/`customer_name` string 필드 2개 추가 — fastddsgen
+**4.0.6**(backend_core가 쓰는 것과 동일 버전, 이 프로젝트 CLAUDE.local.md 상단 원칙 그대로: 소비자마다
+독립 재생성 절대 금지, 한 머신에서 재생성 후 byte-for-byte 복사)으로 재생성.
+`FacadeStorageStatusService.SendRequirements`/`DdsBridgeInterop`/네이티브 `FacadeDdsBridge.dll`의
+C API/`FacadeStorageStatus::SendRequirements`까지 시그니처를 전부 확장(기본값 `""`로 하위호환).
+`ApartmentAssignment.cs`에 `ContractId`/`CustomerName` 필드 추가 — **GenerateJson(별도 외부 도구)이
+JSON에 미리 채워두는 값을 그대로 읽기만 함**, FacadePreviewer 쪽에서 계약을 직접 생성/입력하지 않음.
+`MainWindow.xaml.cs`가 `LoadedAssignment.ContractId/CustomerName`을 `TransferSettingsWindow` 생성자로
+넘겨서 최종적으로 `SendRequirements` DDS 페이로드에 실림.
+
+**로그인 화면 라이트 테마 전환**: 사용자가 CheckCrackViewer 로그인 화면을 먼저 "Aqua Blue" 목업
+색감으로 바꾼 뒤, FacadePreviewer는 "Forest Green" 목업으로 동일한 방향 요청 — 어두운 유리 카드 +
+전체화면 사진 오버레이(다크 스크림) 조합에서, 카드는 밝은 흰색(`#F2FFFFFF`)으로, 스크림은 어두운
+검정 대신 은은한 그린 틴트(`#3315291D`)로 교체. **배경 사진(`login_image.png`) 자체는 그대로 유지** —
+색만 바꾸고 이미지 애셋은 안 건드리는 것이 이번 라운드(CheckCrackViewer/FacadePreviewer/
+AnalysisLoadBalancer 3개 앱 전부)의 공통 원칙. 로그인 후 화면(App.xaml의 `Bg`/`Surface`/`Surface2`/
+`Border`)도 CheckCrackViewer가 같은 날 바꾼 새 중립 다크 팔레트(`#2B2B2E`/`#39393C`/`#45454A`/
+`#57575C`)와 완전히 동일한 값으로 맞춤 — 원래부터 이 파일의 주석이 "matches CheckCrackViewer for
+visual consistency"라고 명시하고 있던 기존 관례를 그대로 유지.
+
+**반복해서 겪은 XAML 함정**: 새로 추가하는 Korean 주석에 `--`(문장 구분용 대시)를 쓰면 `MC3000: An
+XML comment cannot contain '--'` 빌드 에러 — 이 세션에서만 3개 앱(CheckCrackViewer/FacadePreviewer/
+AnalysisLoadBalancer) 전부에서 반복적으로 겪음. `--` 대신 `:`나 쉼표로 대체할 것, 특히 날짜 태그
+뒤에 설명을 붙일 때(`2026-08-28: ... -- ...` 패턴) 습관적으로 자꾸 씀.
