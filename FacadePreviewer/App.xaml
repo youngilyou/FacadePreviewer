@@ -8,11 +8,14 @@
 
             <conv:InverseBoolConverter x:Key="InverseBoolConverter"/>
 
-            <!-- ===== palette (matches CheckCrackViewer for visual consistency) ===== -->
-            <SolidColorBrush x:Key="Bg" Color="#14181A"/>
-            <SolidColorBrush x:Key="Surface" Color="#1C2124"/>
-            <SolidColorBrush x:Key="Surface2" Color="#242A2D"/>
-            <SolidColorBrush x:Key="Border" Color="#333B3E"/>
+            <!-- ===== palette (matches CheckCrackViewer for visual consistency) =====
+                 2026-08-28: CheckCrackViewer의 App.xaml과 동일하게 청록빛 도는 검정에서
+                 완전 중립(neutral) 톤의 짙은 회색으로 전환. 로그인 화면(LoginWindow)은
+                 별도 Forest Green 라이트 팔레트를 쓰므로 이 값들의 영향을 받지 않는다. -->
+            <SolidColorBrush x:Key="Bg" Color="#2B2B2E"/>
+            <SolidColorBrush x:Key="Surface" Color="#39393C"/>
+            <SolidColorBrush x:Key="Surface2" Color="#45454A"/>
+            <SolidColorBrush x:Key="Border" Color="#57575C"/>
             <SolidColorBrush x:Key="Text" Color="#E7E9E4"/>
             <SolidColorBrush x:Key="Text2" Color="#9AA39C"/>
             <SolidColorBrush x:Key="Accent" Color="#FF6A3D"/>

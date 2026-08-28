@@ -4,17 +4,20 @@
         xmlns:vm="clr-namespace:FacadePreviewer.ViewModels"
         Title="현장 로그인" WindowState="Maximized"
         WindowStartupLocation="CenterScreen"
-        Background="#0A0E12">
+        Background="#EAF3EC">
     <Window.Resources>
-        <!-- 로그인 화면 전용 브랜드 블루. 앱 나머지 화면의 Accent(오렌지)와는 별개
-             (CheckCrackViewer의 LoginWindow.xaml과 동일한 결정: 로그인 화면 목업의
-             파란색을 그대로 맞춘다). -->
-        <SolidColorBrush x:Key="LoginBlue" Color="#2E8FE0"/>
+        <!-- 2026-08-28: "Forest Green" 목업 색감으로 전환 (CheckCrackViewer LoginWindow.xaml의
+             Aqua Blue 전환과 동일한 방향: 기존 어두운 유리 카드/사진 오버레이 톤에서
+             밝은 카드 + 그린 포인트로). login_image.png 배경 사진 자체는 기존 그대로 유지. -->
+        <SolidColorBrush x:Key="LoginGreen" Color="#2E7D4F"/>
+        <SolidColorBrush x:Key="LoginTextDark" Color="#1B2E22"/>
+        <SolidColorBrush x:Key="LoginTextMuted" Color="#5C6F63"/>
+        <SolidColorBrush x:Key="LoginErrorText" Color="#E3543A"/>
 
         <Style x:Key="GlassTextBox" TargetType="TextBox">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource LoginTextDark}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource LoginTextDark}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="FontSize" Value="13.5"/>
@@ -31,8 +34,8 @@
 
         <Style x:Key="GlassPasswordBox" TargetType="PasswordBox">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource LoginTextDark}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource LoginTextDark}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="FontSize" Value="13.5"/>
@@ -47,17 +50,17 @@
             </Setter>
         </Style>
 
-        <!-- 입력창을 감싸는 어두운 캡슐 (CheckCrackViewer의 InputCapsule과 동일한 스타일). -->
+        <!-- 입력창을 감싸는 흰색 캡슐 (CheckCrackViewer의 InputCapsule과 동일한 방향, 그린 톤 테두리). -->
         <Style x:Key="InputCapsule" TargetType="Border">
-            <Setter Property="Background" Value="#331A2028"/>
-            <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#D8E6DC"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="14,12"/>
         </Style>
 
         <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#B9C2C7"/>
+            <Setter Property="Foreground" Value="{StaticResource LoginTextMuted}"/>
             <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="2,0,0,6"/>
@@ -67,28 +70,29 @@
              안 되므로 code-behind PasswordChanged에서 직접 토글, Username은 바인딩 가능하니
              DataTrigger로, 둘 다 별도 컨버터 없이 처리). -->
         <Style x:Key="PlaceholderText" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#5A6570"/>
+            <Setter Property="Foreground" Value="#8CA098"/>
             <Setter Property="FontSize" Value="13.5"/>
             <Setter Property="IsHitTestVisible" Value="False"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <!-- 전체화면 배경 사진 -->
+        <!-- 전체화면 배경 사진 (기존 그대로 유지) -->
         <Image Source="/Assets/login_image.png" Stretch="UniformToFill"/>
-        <!-- 사진 위에서도 카드 글자가 항상 또렷하게 보이도록 얇은 어두운 스크림 -->
-        <Rectangle Fill="#4D0A0E12"/>
+        <!-- Forest Green 톤으로 은은하게 물들이는 얇은 스크림 (밝은 카드 자체가 이미
+             충분한 대비를 주므로 어둡게 깔 필요는 없고, 사진과 카드 톤을 이어주는 역할). -->
+        <Rectangle Fill="#3315291D"/>
 
-        <!-- 중앙 유리 카드 -->
+        <!-- 중앙 밝은 카드 -->
         <Border Width="430" Padding="40,36" CornerRadius="18"
-                Background="#DC141A1E" BorderBrush="#33FFFFFF" BorderThickness="1"
+                Background="#F2FFFFFF" BorderBrush="#33FFFFFF" BorderThickness="1"
                 HorizontalAlignment="Center" VerticalAlignment="Center">
             <Border.Effect>
-                <DropShadowEffect Color="Black" Opacity="0.45" BlurRadius="40" ShadowDepth="12"/>
+                <DropShadowEffect Color="Black" Opacity="0.35" BlurRadius="40" ShadowDepth="12"/>
             </Border.Effect>
             <StackPanel>
-                <TextBlock Text="현장 로그인" Foreground="White" FontWeight="Bold" FontSize="26" Margin="0,0,0,6"/>
-                <TextBlock Text="FacadePreviewer에 접속합니다." Foreground="#9AA6B0" FontSize="13" Margin="0,0,0,28"/>
+                <TextBlock Text="현장 로그인" Foreground="{StaticResource LoginTextDark}" FontWeight="Bold" FontSize="26" Margin="0,0,0,6"/>
+                <TextBlock Text="FacadePreviewer에 접속합니다." Foreground="{StaticResource LoginTextMuted}" FontSize="13" Margin="0,0,0,28"/>
 
                 <TextBlock Text="사용자 ID" Style="{StaticResource FieldLabel}"/>
                 <Border Style="{StaticResource InputCapsule}" Margin="0,0,0,18">
@@ -119,14 +123,14 @@
                     </Grid>
                 </Border>
 
-                <CheckBox Content="로그인 상태 유지" Foreground="#B9C2C7" FontSize="12.5"
+                <CheckBox Content="로그인 상태 유지" Foreground="{StaticResource LoginTextMuted}" FontSize="12.5"
                           IsChecked="{Binding StayLoggedIn}" Margin="0,0,0,22"/>
 
                 <Button Content="로그인" Command="{Binding LoginCommand}" IsDefault="True"
-                        Background="{StaticResource LoginBlue}" Foreground="White" BorderThickness="0"
+                        Background="{StaticResource LoginGreen}" Foreground="White" BorderThickness="0"
                         FontWeight="Bold" FontSize="14.5" Padding="10,14" Cursor="Hand"/>
 
-                <TextBlock Text="{Binding StatusText}" Foreground="#FF8A6A" TextWrapping="Wrap" FontSize="12.5"
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource LoginErrorText}" TextWrapping="Wrap" FontSize="12.5"
                            Margin="0,16,0,0">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
