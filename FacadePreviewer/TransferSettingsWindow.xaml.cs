@@ -541,7 +541,32 @@ public partial class TransferSettingsWindow : Window
             // FacadeImageBridge/main.cpp) -- upper-cased so "front"/"Front"/"FRONT" all match
             // one of the 6 accepted values regardless of how the ComboBox text got typed/selected.
             var directionText = ((System.Windows.Controls.ComboBoxItem)DirectionComboBox.SelectedItem).Content.ToString()!;
-            plan = new List<(string, string)> { (directionText.Split(' ')[0], localFolder) };
+            var selectedDirection = directionText.Split(' ')[0];
+
+            // 2026-08-29: 실제로 겪은 버그 -- LocalFolderTextBox에 경로를 직접 타이핑/붙여넣거나
+            // (OnBrowseLocalFolder의 폴더명->방향 자동 동기화를 거치지 않는 경로), 또는 이전 세션에서
+            // 복원된 Direction 값이 방금 바꾼 폴더와 안 맞는 채로 남아있으면, 폴더 이름(예: "좌")과
+            // 실제로 전송되는 방향(ComboBox, 예: "FRONT")이 서로 어긋난 채 그대로 전송될 수 있음 --
+            // 실제로 "좌" 폴더의 사진이 서버에 direction=FRONT로 기록된 것을 확인(facade_image_sessions
+            // 테이블 직접 조회로 재현). 폴더 이름이 DirectionAliases에 등록된 값과 다른 방향이 선택되어
+            // 있으면 보내기 직전에 한 번 더 확인받는다 -- 같은 사전(DirectionAliases)을 OnBrowseLocalFolder
+            // 자동 동기화와 여기 검증 둘 다에서 재사용하므로 두 경로가 서로 어긋날 일이 없다.
+            var folderLeafName = Path.GetFileName(localFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (DirectionAliases.TryGetValue(folderLeafName, out var folderImpliedDirection)
+                && !string.Equals(folderImpliedDirection, selectedDirection, StringComparison.OrdinalIgnoreCase))
+            {
+                var proceed = ThemedDialog.ShowConfirm(this, "방향 확인",
+                    $"선택한 폴더 이름('{folderLeafName}')은 '{folderImpliedDirection}' 방향으로 보이는데, " +
+                    $"현재 선택된 방향은 '{selectedDirection}'입니다.\n\n'{selectedDirection}' 방향으로 계속 전송하시겠습니까?",
+                    (Brush)Application.Current.Resources["Warn"]);
+                if (!proceed)
+                {
+                    StatusText.Text = "전송이 취소되었습니다 (방향 불일치 확인).";
+                    return;
+                }
+            }
+
+            plan = new List<(string, string)> { (selectedDirection, localFolder) };
         }
 
         var rsyncExePath = Path.Combine(AppContext.BaseDirectory, "cygwin_rsync", "bin", "rsync.exe");
@@ -614,6 +639,30 @@ public partial class TransferSettingsWindow : Window
 
         try
         {
+            // One session_id per direction -- facade_image_sessions' primary key is session_id
+            // alone (one row = one direction, direction is fixed forever by whichever INSERT wins
+            // the "ON CONFLICT (session_id) DO NOTHING" race in FacadeImageReceiver::Impl::upsert
+            // -- see that file's own comment), so every direction needs its own distinct session id.
+            //
+            // 2026-08-29: 실제로 겪은 버그 -- SessionIdTextBox는 창을 여는 시점에 딱 한 번만 자동
+            // 생성되고(2026-08-27부터 운영자가 직접 수정도 못 함) 매 전송마다 새로 생성되지 않음.
+            // 같은 창에서 LEFT를 보낸 뒤 RIGHT를 보내면, RIGHT 사진들이 실제로는 올바른 RIGHT
+            // 폴더에 올라가고 FacadeImageMeta.direction()도 올바르게 "RIGHT"로 채워지는데도(원격
+            // 경로 파싱 자체는 정상 -- 직접 재현 테스트로 확인), facade_image_sessions 행은 이미
+            // LEFT로 먼저 INSERT되어 있어서(ON CONFLICT DO NOTHING) 그대로 LEFT로 굳어버림 -- 이후
+            // 완료 판정/집계가 전부 facade_image_sessions.direction을 통해서만 이뤄지므로
+            // (facade_images 테이블엔 방향 컬럼 자체가 없음), RIGHT로 보낸 사진 전부가 LEFT로
+            // 집계/아카이빙됨. 실제로 DB에서 재현 확인(session_id 20260829_020035가 direction
+            // 컬럼엔 LEFT로 남아있었음).
+            //
+            // 처음엔 "{sessionId}_{direction}" 접미사로 구분했었으나(운영자 요청으로 되돌림 --
+            // 원격 폴더/세션 ID가 "정상적인" yyyyMMdd_HHmmss 형태 그대로 저장되길 원함, 방향 문자열이
+            // 붙은 이름을 원치 않음), 대신 방향마다 현재 시각으로 새로 타임스탬프를 찍어서
+            // 접미사 없이도 서로 다른 session_id가 나오게 한다. 배치 모드처럼 여러 방향을 한 루프
+            // 안에서 빠르게(같은 1초 안에) 연속으로 보낼 수도 있으므로, 직전 값보다 뒤로 가도록
+            // 최소 1초씩 밀어서 절대 같은 값이 나오지 않게 보장한다(단일 방향 모드처럼 클릭
+            // 사이에 실제 시간차가 있는 경우는 그냥 DateTime.Now가 그대로 쓰임).
+            var lastSessionStamp = DateTime.MinValue;
             for (var i = 0; i < plan.Count; i++)
             {
                 var (direction, originalFolder) = plan[i];
@@ -622,10 +671,11 @@ public partial class TransferSettingsWindow : Window
                 // excluded) should keep pointing straight at the operator's own folder, not a copy of
                 // it. See PrepareTransferFolder's own comment.
                 var folder = PrepareTransferFolder(direction, originalFolder);
-                // One session_id per direction -- facade_image_sessions' primary key is session_id
-                // alone (one row = one direction), so a batch of N directions needs N distinct
-                // session ids even though the operator only typed/kept one base value.
-                var perDirectionSessionId = batchMode ? $"{sessionId}_{direction}" : sessionId;
+                var sessionStamp = DateTime.Now;
+                if (sessionStamp <= lastSessionStamp)
+                    sessionStamp = lastSessionStamp.AddSeconds(1);
+                lastSessionStamp = sessionStamp;
+                var perDirectionSessionId = sessionStamp.ToString("yyyyMMdd_HHmmss");
                 var remoteDest = $"{remoteRoot}/{company}/{building}/{direction}/{perDirectionSessionId}";
 
                 var resume = false;
@@ -1010,7 +1060,6 @@ public partial class TransferSettingsWindow : Window
         SetStage(StageStorageDot, StageStorageLabel, StageState.Pending);
         SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Pending);
         SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Pending);
-        SetStage(StageDoneDot, StageDoneLabel, StageState.Pending);
         AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
         _awaitingAnalysisConfirmResult = null;
         StopDispatchRetryTimer();
@@ -1031,6 +1080,12 @@ public partial class TransferSettingsWindow : Window
         _dispatchingResult = result;
         _dispatchAttemptCount = 0;
         _awaitingAnalysisConfirmResult = null;
+
+        // 이 archive에 대한 저장 처리 확인(예/아니오)이 끝났으니 다음 방향을 보내도 됨 -- 이 archive
+        // 자체의 원격 분석(분석 진행)은 이후에도 계속되지만, 그건 서버/CheckCrackViewer 쪽에서
+        // 독립적으로 추적되는 별개의 단계라 여기서 더 기다릴 필요는 없음.
+        _phase = Phase.Idle;
+        TransferButton.IsEnabled = true;
 
         SendDispatchAttempt();
     }
@@ -1058,8 +1113,7 @@ public partial class TransferSettingsWindow : Window
             return;
         }
 
-        SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Active,
-            $"Archive ID {result.ArchiveId} ({_dispatchAttemptCount}/{MaxDispatchAttempts}차 전송)");
+        SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, StageState.Active, $"Archive ID {result.ArchiveId}");
         StatusText.Text = $"분석 요청 전송됨 ({_dispatchAttemptCount}/{MaxDispatchAttempts}차 시도, Archive ID: {result.ArchiveId})";
 
         _dispatchRetryTimer?.Stop();
@@ -1105,6 +1159,8 @@ public partial class TransferSettingsWindow : Window
         AnalysisConfirmPanel.Visibility = Visibility.Collapsed;
         SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Skipped);
         _awaitingAnalysisConfirmResult = null;
+        _phase = Phase.Idle;
+        TransferButton.IsEnabled = true;
     }
 
     private void EnterStorageWaitPhase(string company, string building)
@@ -1162,14 +1218,14 @@ public partial class TransferSettingsWindow : Window
             return;
         Dispatcher.BeginInvoke(() =>
         {
-            _phase = Phase.Idle;
-            TransferButton.IsEnabled = true;
             CancelButton.IsEnabled = false;
             _storageStatus?.Dispose();
             _storageStatus = null;
 
             if (result.Cancelled)
             {
+                _phase = Phase.Idle;
+                TransferButton.IsEnabled = true;
                 StatusText.Text = $"저장 처리가 취소되었습니다 ({result.Company}/{result.Building}).";
                 SetStage(StageStorageDot, StageStorageLabel, StageState.Skipped, "취소됨");
                 ThemedDialog.ShowInfo(this, "저장 취소됨",
@@ -1182,14 +1238,17 @@ public partial class TransferSettingsWindow : Window
                 StatusText.Text = $"저장 완료: {result.ImageCount}장, {mb:F1} MB ({result.ZipPath})";
                 SetStage(StageStorageDot, StageStorageLabel, StageState.Done);
 
-                // 분석 시작 여부 -- archive_id는 방금 받은 FacadeStorageResult에서 확보(도메인 0),
-                // 명령 자체는 도메인 30(AnalysisCommandBridge)으로 보냄. directions_csv는
-                // FacadeStorageResult에 없어서("" 전달) CheckCrackViewer 쪽 등록은 압축 해제 후
-                // 실제 하위 폴더를 스캔해서 결정하므로 값이 없어도 등록 자체엔 영향 없음(원격
-                // 분석 작업 창의 표시용 컬럼에만 씀) -- AnalysisCommandBridge.h의 SendDispatchRequest
-                // 주석 참고. 2026-08-27: 팝업(ThemedDialog.ShowConfirm) 대신 "진행 단계" 패널의
-                // "분석 대기" 행에 인라인 예/아니오 버튼으로 물어봄 -- 실제 처리는
-                // OnAnalysisStartYesClick/OnAnalysisStartNoClick에서.
+                // 2026-08-29: 실제로 겪은 버그 -- TransferButton을 여기서 바로 다시 활성화하면,
+                // 운영자가 "예/아니오" 확인(AnalysisConfirmPanel)에 답하기도 전에 다음 방향을 곧바로
+                // 전송할 수 있었음. OnTransferClick -> ResetProgressStages()가 그 순간
+                // _awaitingAnalysisConfirmResult/AnalysisConfirmPanel을 통째로 지워버리므로, 방금
+                // 저장된 이 archive의 분석 시작 여부를 물어볼 기회 자체가 조용히 사라짐 -- 실제로 같은
+                // (company, building)에 대해 서버의 enqueue_archive_job도 direction 구분 없이
+                // (company, building) 단위로만 de-dup하기 때문에(CrackVisionArchiveManager.cpp),
+                // 두 방향의 저장 처리 요청이 겹치면 뒤에 요청한 방향이 "이미 처리 중"으로 조용히
+                // 드롭될 수 있음 -- 클라이언트가 이 "예/아니오" 확인을 놓치지 않고 반드시 처리하도록
+                // 강제하는 것이 그 겹침의 영향을 줄이는 가장 간단한 방어선. TransferButton은 이제
+                // OnAnalysisStartYesClick/OnAnalysisStartNoClick에서 다시 활성화된다.
                 _awaitingAnalysisConfirmResult = result;
                 SetStage(StageAnalysisWaitDot, StageAnalysisWaitLabel, StageState.Active,
                     $"{result.Company} / {result.Building}, Archive ID {result.ArchiveId}");
@@ -1197,6 +1256,8 @@ public partial class TransferSettingsWindow : Window
             }
             else
             {
+                _phase = Phase.Idle;
+                TransferButton.IsEnabled = true;
                 StatusText.Text = $"저장 실패: {result.ErrorMessage}";
                 SetStage(StageStorageDot, StageStorageLabel, StageState.Failed, result.ErrorMessage);
                 ThemedDialog.ShowInfo(this, "저장 실패",
@@ -1294,7 +1355,6 @@ public partial class TransferSettingsWindow : Window
                 ? $"분석 완료: worker={d.WorkerId} (Archive ID: {d.ArchiveId}) -- 결과는 사무실에서 확인하세요."
                 : $"분석 실패: worker={d.WorkerId} (Archive ID: {d.ArchiveId})";
             SetStage(StageAnalysisRunDot, StageAnalysisRunLabel, d.Success ? StageState.Done : StageState.Failed);
-            SetStage(StageDoneDot, StageDoneLabel, d.Success ? StageState.Done : StageState.Failed);
             ThemedDialog.ShowInfo(this, d.Success ? "분석 완료" : "분석 실패",
                 d.Success
                     ? $"Archive ID {d.ArchiveId}의 분석이 완료되었습니다.\n상세 결과는 사무실 CheckCrackViewer 화면에서 확인하세요."

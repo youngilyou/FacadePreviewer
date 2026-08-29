@@ -1295,3 +1295,45 @@ visual consistency"라고 명시하고 있던 기존 관례를 그대로 유지.
 XML comment cannot contain '--'` 빌드 에러 — 이 세션에서만 3개 앱(CheckCrackViewer/FacadePreviewer/
 AnalysisLoadBalancer) 전부에서 반복적으로 겪음. `--` 대신 `:`나 쉼표로 대체할 것, 특히 날짜 태그
 뒤에 설명을 붙일 때(`2026-08-28: ... -- ...` 패턴) 습관적으로 자꾸 씀.
+
+## 2026-08-29: 진행 단계 UI 정리 + 방향 불일치 확인 + TransferButton 재활성화 타이밍 + 세션 ID 재사용 버그
+
+**"진행 단계" 패널 정리**: "완료" 단계 삭제(분석 진행 자체가 성공/실패로 끝나는 걸로 완결 상태를
+표시하므로 별도 "완료" 단계는 중복). "분석 진행" 라벨의 "(N/M차 전송)" 재전송 카운터 표시 제거
+(Archive ID만 남김). "분석 대기"를 왼쪽(로컬 전송 단계들) 칼럼에서 오른쪽(원격 분석 단계들)
+칼럼으로 이동 — 개념적으로 "분석 진행"의 앞 단계라 같은 칼럼에 속하는 게 맞음.
+
+**폴더 이름 vs 선택된 방향 불일치 확인 다이얼로그**: 실제로 겪은 버그 — `LocalFolderTextBox`에
+경로를 직접 타이핑/붙여넣거나(`OnBrowseLocalFolder`의 폴더명→방향 자동 동기화를 거치지 않는
+경로), 또는 이전 세션에서 복원된 Direction 값이 방금 바꾼 폴더와 안 맞는 채로 남아있으면,
+폴더 이름("좌")과 실제로 전송되는 방향(ComboBox, "FRONT")이 서로 어긋난 채 그대로 전송될 수
+있었음 — 실제로 "좌" 폴더 사진이 서버에 `direction=FRONT`로 기록된 것을 `facade_image_sessions`
+직접 조회로 재현 확인. 폴더 이름이 `DirectionAliases`에 등록된 값과 다른 방향이 선택돼 있으면
+전송 직전에 한 번 더 확인받도록 함(같은 사전을 `OnBrowseLocalFolder` 자동 동기화와 이 검증
+둘 다 재사용하므로 서로 어긋날 일이 없음).
+
+**TransferButton 재활성화 타이밍 버그**: "저장 완료" 직후 TransferButton을 바로 재활성화하면,
+운영자가 "예/아니오"(분석 시작 확인)에 답하기 전에 다음 방향을 곧바로 전송할 수 있었고,
+`OnTransferClick → ResetProgressStages()`가 그 순간 대기 중이던 확인 상태를 통째로 지워버려
+방금 저장된 archive의 분석 시작 여부를 물어볼 기회 자체가 조용히 사라짐 — 게다가 서버의
+`enqueue_archive_job`도 (company, building) 단위로만 de-dup하므로(direction 구분 없음),
+두 방향의 저장 처리 요청이 겹치면 뒤에 요청한 방향이 "이미 처리 중"으로 조용히 드롭될 수
+있었음. TransferButton은 이제 `OnAnalysisStartYesClick`/`OnAnalysisStartNoClick`에서만
+재활성화됨 — 운영자가 예/아니오 확인을 반드시 처리하도록 강제.
+
+**세션 ID 재사용 버그 (CheckCrackV2/MngData와 교차 조사, 상세는 MngData의 CLAUDE.local.md
+참고)**: 운영자가 창을 안 닫고 LEFT를 보낸 뒤 이어서 RIGHT를 보내면, 서버 DB에 저장된 아카이브가
+계속 LEFT로만 잡히는 버그를 실제 VM SSH+tmux로 DB를 직접 조회해 재현/확정. 근본 원인:
+`facade_image_sessions`는 `session_id`만 PK이고 `direction`은 첫 INSERT 값에 영구 고정
+(`ON CONFLICT DO NOTHING`)인데, `SessionIdTextBox`는 창을 열 때 딱 한 번만 자동 생성되고
+(2026-08-27부터 운영자가 직접 수정도 못 함) 매 전송마다 새로 생성되지 않아서, 같은 창에서
+방향을 바꿔 순차로 보내면 전부 같은 session_id를 재사용했음. 처음엔 `{sessionId}_{direction}`
+접미사로 구분했으나, **운영자 요청으로 되돌리고** 대신 방향마다 그 순간의 새 타임스탬프를
+`yyyyMMdd_HHmmss`(접미사 없는 정상 형태 그대로) 찍어서 서로 다른 session_id가 나가게 함
+(`TransferSettingsWindow.xaml.cs`의 전송 루프, `lastSessionStamp`로 직전 값보다 뒤로 밀어
+같은 1초 안에 여러 방향을 보내도 충돌 안 나게 보장). `SessionIdTextBox`에 보이는 값 자체는
+그대로 유지(이제 "시작 참고용" 의미만 가짐, 실제 전송값은 매 방향마다 새로 찍힘).
+
+**검증**: 방향마다 다른 session_id로 실제 재현 테스트(DB 직접 확인) 통과, 실제 FacadePreviewer로
+LEFT/RIGHT/FRONT를 연속 전송해 서버에 각각 정확히 분리된 아카이브로 저장되는 것 확인. 사용자가
+직접 "저장 잘되고 에러 없음"으로 최종 재확인.
