@@ -17,6 +17,7 @@ from src.stitching.graph import (
     compute_global_homographies,
     count_connected_components,
     pick_reference,
+    refine_global_homographies,
 )
 from src.stitching.warp import warp_images
 from src.sfm.colmap_runner import should_run_colmap
@@ -89,14 +90,21 @@ def stitch_facade(
     geometry_results: list[GeometryResult],
     cfg: Config,
     on_preview: Callable[[np.ndarray, int, int], None] | None = None,
+    never_matched_count: int = 0,
 ) -> MosaicResult:
     graph = build_stitch_graph(geometry_results)
     reference = pick_reference(graph)
     if reference is None:
         raise RuntimeError(f"facade {facade_id}: no geometry edge passed the quality gate")
 
-    homographies, unreachable = compute_global_homographies(graph, reference)
     sizes = {iid: (img.shape[1], img.shape[0]) for iid, img in images.items()}
+
+    homographies, unreachable = compute_global_homographies(graph, reference)
+    # Correct the BFS-tree-only composition above using every OTHER edge in the graph too
+    # (see refine_global_homographies' own docstring) before measuring drift, so
+    # global_drift_score_px/max_drift_score_px -- and needs_colmap_fallback below, which is
+    # gated on them -- reflect the refined result, not the pre-refinement one.
+    homographies = refine_global_homographies(graph, reference, homographies, sizes)
     mean_drift_px, max_drift_px, cycle_edge_count = compute_drift_score(graph, reference, homographies, sizes)
 
     warped, canvas_size = warp_images(images, homographies)
@@ -142,6 +150,7 @@ def stitch_facade(
         disconnected_components=count_connected_components(graph),
         reference_image_id=reference,
         unreachable_image_ids=unreachable,
+        never_matched_count=never_matched_count,
         global_drift_score_px=mean_drift_px,
         max_drift_score_px=max_drift_px,
         cycle_edge_count=cycle_edge_count,

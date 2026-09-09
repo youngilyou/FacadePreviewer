@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -84,6 +85,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // stale previous facade's result.
     [ObservableProperty] private BitmapSource? _scanResultImage;
     [ObservableProperty] private bool _hasScanResult;
+
+    // Populated after a successful scan from {facadeName}_unmatched_images.json (see
+    // LoadUnmatchedImages) -- images the pipeline itself determined never contributed to the
+    // stitched result (zero passing pairwise match, or reached COLMAP but failed to register),
+    // as opposed to guessing from how a photo looks. ExcludeUnmatchedImagesCommand moves the
+    // checked ones into the capture folder's "excluded" subfolder (same convention as
+    // RemoveExcludedFrames) so a re-scan skips them. HasUnmatchedImages exists for the same
+    // WPF-trigger-needs-a-plain-bool reason as HasCapturedFrames above.
+    public ObservableCollection<UnmatchedImageItem> UnmatchedImages { get; } = new();
+    [ObservableProperty] private bool _hasUnmatchedImages;
 
     // Populated live as each frame is saved (see OnDecodedFrameReceived) so the operator can
     // review/remove bad frames (blur, wrong angle, occluder) before RunScan hands the whole
@@ -463,6 +474,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     StatusMessage = $"스캔 완료 — {outputDir} (결과 이미지 표시 실패: {loadError})";
                 }
+                LoadUnmatchedImages(outputDir, facadeName, dir);
             }
             else
             {
@@ -512,6 +524,114 @@ public partial class MainViewModel : ObservableObject, IDisposable
             error = ex.Message;
             return false;
         }
+    }
+
+    private sealed class UnmatchedImagesReportDto
+    {
+        [JsonPropertyName("never_matched")] public List<string> NeverMatched { get; set; } = new();
+        [JsonPropertyName("colmap_registration_failed")] public List<string> ColmapRegistrationFailed { get; set; } = new();
+    }
+
+    // Reads {facadeName}_unmatched_images.json (written by src/pipeline/runner.py, see
+    // 2026-09-08 CLAUDE.local.md entry) and populates UnmatchedImages so an operator can act on
+    // exactly the images the pipeline itself determined never contributed to the stitched
+    // result, instead of guessing from how a photo looks. Missing file / parse failure just
+    // leaves the panel empty rather than surfacing as a scan failure -- this is a secondary,
+    // best-effort diagnostic on top of an already-successful scan.
+    private void LoadUnmatchedImages(string outputDir, string facadeName, string sourceDir)
+    {
+        UnmatchedImages.Clear();
+        string path = Path.Combine(outputDir, $"{facadeName}_unmatched_images.json");
+        if (!File.Exists(path))
+        {
+            HasUnmatchedImages = false;
+            return;
+        }
+        try
+        {
+            var dto = JsonSerializer.Deserialize<UnmatchedImagesReportDto>(
+                File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (dto == null)
+            {
+                HasUnmatchedImages = false;
+                return;
+            }
+
+            const int ThumbnailSizePx = 120; // same convention as OnDecodedFrameReceived's CapturedFrameItem thumbnails
+            void AddItems(IEnumerable<string> stems, string reason)
+            {
+                foreach (string stem in stems)
+                {
+                    string? filePath = Directory.EnumerateFiles(sourceDir)
+                        .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f).Equals(stem, StringComparison.OrdinalIgnoreCase));
+                    if (filePath == null)
+                        continue;
+
+                    BitmapSource? thumbnail = null;
+                    try
+                    {
+                        using Mat mat = Cv2.ImRead(filePath, ImreadModes.Color);
+                        if (!mat.Empty())
+                        {
+                            using var thumbMat = new Mat();
+                            Cv2.Resize(mat, thumbMat, new OpenCvSharp.Size(ThumbnailSizePx, ThumbnailSizePx));
+                            thumbnail = thumbMat.ToBitmapSource();
+                            thumbnail.Freeze();
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Best-effort thumbnail -- still list the entry (name + reason) even if
+                        // this particular file can't be decoded for a preview.
+                    }
+                    UnmatchedImages.Add(new UnmatchedImageItem(filePath, reason) { ThumbnailSource = thumbnail });
+                }
+            }
+            AddItems(dto.NeverMatched, "1차 매칭 실패");
+            AddItems(dto.ColmapRegistrationFailed, "COLMAP 등록 실패");
+            HasUnmatchedImages = UnmatchedImages.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            AppendScanLog($"[경고] 미매칭 이미지 목록 로드 실패 — {ex.Message}");
+            HasUnmatchedImages = false;
+        }
+    }
+
+    // "제외" button on the 미매칭 이미지 panel -- same move-to-"excluded"-subfolder convention as
+    // RemoveExcludedFrames (never deletes), so a subsequent RunScan's directory-wide glob skips
+    // these files. Operates on IsSelected (checked = exclude), default true since being in this
+    // list already means the pipeline flagged the image as unused.
+    [RelayCommand]
+    private void ExcludeUnmatchedImages()
+    {
+        string? dir;
+        lock (_captureLock)
+            dir = _captureDir;
+        if (dir == null)
+            return;
+        string excludedDir = Path.Combine(dir, "excluded");
+
+        foreach (var item in UnmatchedImages.Where(i => i.IsSelected).ToList())
+        {
+            try
+            {
+                Directory.CreateDirectory(excludedDir);
+                string dest = Path.Combine(excludedDir, Path.GetFileName(item.FilePath));
+                if (File.Exists(item.FilePath) && !File.Exists(dest))
+                    File.Move(item.FilePath, dest);
+                UnmatchedImages.Remove(item);
+            }
+            catch (IOException)
+            {
+                // Best-effort, matching RemoveExcludedFrames' own convention -- leaves this one
+                // in the list so the operator can see it wasn't actually excluded and try again.
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+        HasUnmatchedImages = UnmatchedImages.Count > 0;
     }
 
     private void AppendScanLog(string? line)

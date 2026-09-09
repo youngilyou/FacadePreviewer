@@ -13,7 +13,19 @@
 
 matching:
   temporal_neighbor_count: 4
-  max_gps_distance_m: 20
+  # Fallback/upper-bound only -- the real spatial-proximity radius is now
+  # auto-calibrated per capture from that capture's own GPS nearest-neighbor
+  # distribution (src/matching/pair_selector.py's _auto_calibrate_radius), 3D
+  # (horizontal+altitude), not a single fixed constant. This value is used
+  # outright only when there isn't enough located imagery to calibrate from,
+  # and otherwise clamps the auto-computed radius so a sparse/oddly-shaped
+  # capture can't calibrate itself unreasonably large. 8m reflects today's
+  # plain-GPS captures (a real 168-image facade run: auto-calibrated radius
+  # landed well under this, matched-pair count 6217 -> 897) -- once the
+  # planned RTK GPS upgrade lands, auto-calibration should pick that up on
+  # its own (tighter measured neighbor spacing -> tighter computed radius)
+  # without needing this value changed.
+  max_gps_distance_m: 8
   max_view_angle_delta_deg: 20
 
 loftr:
@@ -29,15 +41,96 @@ geometry:
   ransac_reproj_threshold_px: 4.0
 
 stitch:
-  generate_analysis_mosaic: true
-  generate_visual_mosaic: false   # coverage-gap tool: skip the extra multi-band blend pass previewer doesn't need
+  generate_analysis_mosaic: true  # hard-seam, no cross-fade (blend_analysis) -- for coverage-gap
+  # measurement, not for people to look at. A hard seam through real content
+  # (e.g. an AC unit split across two source images) looks exactly like a
+  # "cut and pasted" artifact even when every pixel is genuine and correctly
+  # placed -- see 2026-09-08 CLAUDE.local.md entry (user flagged this as
+  # apparent fabrication; it's an intentional design tradeoff of THIS output,
+  # not a stitching bug). generate_visual_mosaic below is the actual
+  # human-viewing output (exposure-compensated multi-band blend_visual).
+  generate_visual_mosaic: true
   analysis_feather_blend: false
   visual_multiband_blend: false
   multiband_num_bands: 5
 
 colmap:
   enabled: true
+  # "fallback" (default): run 1st-stage LoFTR matching + pairwise-homography
+  # stitching first, only fall through to COLMAP if that result's drift/
+  # coverage fails the thresholds below.
+  # "always": skip the 1st stage entirely and go straight to COLMAP with the
+  # full image catalog (2026-09-09 CLAUDE.local.md entry -- COLMAP never
+  # reuses the 1st stage's matches anyway, and every real repetitive-facade
+  # capture so far has triggered fallback regardless, so the 1st stage was
+  # pure wasted time on this project's actual data).
   mode: fallback
   max_drift_px: 10.0
   max_seam_drift_px: 20.0
   max_coverage_gap_ratio: 0.5
+  # 2026-09-09: images the 2D chain can't place at all (no matching path to
+  # the reference image, or zero passing edges to anything) are silently
+  # dropped from the mosaic -- a real photo just never appears in the
+  # output. coverage_gap_ratio alone can miss this (it's measured only over
+  # the placed subset's own auto-shrunk canvas, so a whole disconnected
+  # island can vanish while the remaining canvas still looks fully covered).
+  # 0.03 = trigger COLMAP fallback once more than 3% of this facade's
+  # matchable images would otherwise be lost this way.
+  max_unreachable_ratio: 0.03
+
+dense:
+  # GPU-only (COLMAP's dense-stereo module has no CPU implementation --
+  # confirmed via upstream pycolmap.PatchMatchOptions, which only exposes a
+  # gpu_index selector, never a CPU mode).
+  #
+  # When available, this runs pycolmap's patch_match_stereo to recover a
+  # true per-pixel depth for each registered image, meant to correct pixels
+  # that are genuinely off the fitted facade plane (balconies, ledges, AC
+  # units) instead of letting the flat-plane homography shear/stretch them
+  # to the wrong place -- see src/geometry/dense_depth.py.
+  #
+  # DEFAULT OFF (2026-09-09 real-data test): the current per-pixel
+  # forward-scatter implementation, tested end to end on the real 140-image
+  # FRONT dataset, makes output quality WORSE, not better -- it covers the
+  # entire mosaic (sky, mountains, and the wall itself, not just balconies)
+  # in salt-and-pepper speckle. Root cause: even geometric-consistency-
+  # filtered PatchMatch depth is noisy enough (especially near windows/glass)
+  # that ordinary flat-wall depth noise gets misclassified as "off-plane" and
+  # scattered essentially everywhere; raising deviation_threshold_m from
+  # 0.15 to 0.5 did not meaningfully fix it, so this isn't just a threshold-
+  # tuning problem -- the classification needs to be spatially coherent
+  # (e.g. require a local neighborhood majority / minimum connected-blob
+  # size before trusting a pixel as truly off-plane, not a lone noisy
+  # sample) before this is safe to enable. Do not flip this to true without
+  # that fix and a fresh before/after visual check.
+  enable: false
+  # PatchMatch's own internal working resolution (independent of each
+  # image's true undistorted size) -- higher is slower but finds finer
+  # off-plane detail. 1600 keeps a full ~150-image facade's dense run to
+  # roughly 15-25 minutes on a single consumer GPU (RTX 40-series); the
+  # 800px smoke-tested value processed 140 images in 8 minutes.
+  max_image_size: 1600
+  # Cross-checks each pixel's depth against neighboring views before
+  # accepting it (COLMAP's own recommended default) -- roughly doubles dense
+  # runtime over photometric-only, worth it here because a wrong/noisy depth
+  # doesn't just cost sharpness, it visibly misplaces the pixel on the
+  # canvas.
+  geom_consistency: true
+  # How far (meters, along the plane normal) a pixel's real 3D position has
+  # to be from the fitted plane before it's treated as genuinely off-plane
+  # and depth-corrected. Below this, ordinary photogrammetric/plane-fit
+  # noise on the actual wall surface would otherwise get needlessly
+  # re-projected through noisier per-pixel depth for zero benefit.
+  deviation_threshold_m: 0.15
+  # Upper bound (meters) on how far off the plane a pixel may be and still
+  # get depth-corrected. Real balconies/ledges are realistically well under
+  # this; sky and distant terrain are not -- and unlike the flat-homography
+  # path (where a near-grazing ray toward the sky typically diverges well
+  # outside any image's local canvas ROI and gets clipped away for free),
+  # orthographic projection has no such natural divergence, so without this
+  # cap a background pixel tens of meters back can still coincidentally land
+  # *inside* the visible canvas and paint sky/mountain color over real wall
+  # content. Confirmed on real data: ~5-30% of "off-plane" background pixels
+  # otherwise land in-bounds.
+  max_deviation_m: 3.0
+  gpu_index: 0

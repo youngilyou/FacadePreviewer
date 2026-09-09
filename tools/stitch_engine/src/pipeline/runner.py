@@ -31,6 +31,7 @@ from src.common.config import Config, load_config
 from src.common.imageio import imread_unicode, imwrite_unicode
 from src.common.logging import get_logger, log_event
 from src.common.types import GeometryFailureCode, GeometryResult, ImageMetadata
+from src.geometry.facade_period import PeriodEstimate, estimate_vertical_period
 from src.geometry.homography import estimate_homography
 from src.geometry.quality import apply_quality_gate
 from src.geometry.rectification import align_reconstruction_to_utm, estimate_utm_epsg, facade_plane_from_reconstruction, rectify_and_blend
@@ -65,6 +66,27 @@ def _run_facade_pipeline(
         elapsed_s=round(time.time() - t0, 2),
     )
 
+    # Precompute each image's own vertical repeat-period once (2026-09-09,
+    # src/geometry/facade_period.py) -- self-matching SIFT within one image,
+    # independent of any pairwise match -- so apply_quality_gate can convert
+    # a homography's implied shift into "how many floors apart" using THIS
+    # image's own measured period (FLOOR_COUNT_MISMATCH check). Computed for
+    # every catalog image up front (not lazily per-pair) since most images
+    # participate in several pairs and the estimate doesn't depend on which
+    # partner it's being checked against.
+    t0 = time.time()
+    periods: dict[str, PeriodEstimate] = {}
+    for meta in catalog:
+        img = imread_unicode(meta.file_path, cv2.IMREAD_COLOR)
+        if img is None:
+            continue
+        periods[meta.image_id] = estimate_vertical_period(img)
+    log_event(
+        logger, "info", "per-image facade period estimation complete",
+        stage="PERIOD_ESTIMATED", facade_id=facade_id, image_count=len(periods),
+        elapsed_s=round(time.time() - t0, 2),
+    )
+
     geometry_results: list[GeometryResult] = []
     t0 = time.time()
     for i, pair in enumerate(pairs):
@@ -93,7 +115,10 @@ def _run_facade_pipeline(
             )
         else:
             geom = estimate_homography(match, inl_th_px=float(cfg.geometry.ransac_reproj_threshold_px))
-            geom = apply_quality_gate(geom, cfg)
+            geom = apply_quality_gate(
+                geom, cfg, meta_a=by_id.get(pair.image_a), meta_b=by_id.get(pair.image_b),
+                period_a=periods.get(pair.image_a),
+            )
         geometry_results.append(geom)
 
         log_event(
@@ -137,6 +162,19 @@ def _run_facade_pipeline(
             continue
         images[image_id] = img
 
+    # Surfaced in the FacadePreviewer UI (scan-results panel) so an operator
+    # can select-and-exclude exactly the images that actually caused a
+    # problem, instead of guessing from how a photo looks (e.g. "this one's
+    # tilted, is that a problem?" -- see CLAUDE.local.md's unmatched-images
+    # feature entry). "never_matched" = had zero pairwise geometry edge
+    # passing the quality gate with any other image, so it never even
+    # reached COLMAP; "colmap_registration_failed" = reached COLMAP but
+    # COLMAP itself couldn't register it into the reconstruction.
+    unmatched_report: dict[str, list[str]] = {
+        "never_matched": sorted(set(by_id.keys()) - set(images.keys())),
+        "colmap_registration_failed": [],
+    }
+
     preview_state = {"prev_path": None}
 
     def _on_preview(canvas, i: int, total: int) -> None:
@@ -155,7 +193,10 @@ def _run_facade_pipeline(
             progress=f"{i}/{total}", preview_path=str(new_path),
         )
 
-    result = stitch_facade(facade_id, images, geometry_results, cfg, on_preview=_on_preview)
+    result = stitch_facade(
+        facade_id, images, geometry_results, cfg, on_preview=_on_preview,
+        never_matched_count=len(unmatched_report["never_matched"]),
+    )
     log_event(
         logger, "info", "facade stitched",
         stage="STITCHED",
@@ -192,6 +233,10 @@ def _run_facade_pipeline(
                     )
                     with open(output_dir / f"{facade_id}_colmap_report.json", "w", encoding="utf-8") as f:
                         json.dump(asdict(colmap_result), f, indent=2, ensure_ascii=False)
+                    colmap_registered_stems = {Path(n).stem for n in colmap_result.registered_image_names}
+                    unmatched_report["colmap_registration_failed"] = sorted(
+                        set(images.keys()) - colmap_registered_stems
+                    )
 
                     # Use the recovered poses to rectify onto the real facade plane
                     # instead of the drifting homography chain -- needs enough images
@@ -224,6 +269,7 @@ def _run_facade_pipeline(
                                     rect_result = rectify_and_blend(
                                         facade_id, reconstruction, plane, colmap_images_dir, cfg,
                                         colmap_mean_reprojection_error_px=colmap_result.mean_reprojection_error_px,
+                                        dense_workspace_dir=output_dir / f"{facade_id}_dense_ws",
                                     )
                                     if rect_result.analysis_image is not None:
                                         imwrite_unicode(output_dir / f"{facade_id}_analysis_colmap.tif", rect_result.analysis_image)
@@ -274,11 +320,148 @@ def _run_facade_pipeline(
     with open(output_dir / f"{facade_id}_source_images.json", "w", encoding="utf-8") as f:
         json.dump(source_images, f, indent=2, ensure_ascii=False)
 
+    with open(output_dir / f"{facade_id}_unmatched_images.json", "w", encoding="utf-8") as f:
+        json.dump(unmatched_report, f, indent=2, ensure_ascii=False)
+
     if preview_state["prev_path"] is not None and preview_state["prev_path"].exists():
         try:
             preview_state["prev_path"].unlink()
         except OSError:
             pass
+
+    log_event(logger, "info", "facade complete", stage="DONE", facade_id=facade_id, output_dir=str(output_dir))
+    return output_dir
+
+
+def _run_colmap_only_pipeline(
+    facade_id: str,
+    catalog: list[ImageMetadata],
+    cfg: Config,
+    output_root: Path,
+    logger,
+    output_dir_override: Path | None = None,
+) -> Path | None:
+    """`colmap.mode: always` -- skip 1st-stage LoFTR matching + pairwise-
+    homography stitching entirely and go straight to COLMAP.
+
+    2026-09-09: on this project's real captures, COLMAP (a) never reuses the
+    1st stage's LoFTR-based geometry_results at all -- it always redoes its
+    own SIFT matching from scratch -- and (b) every real run so far has
+    triggered needs_colmap_fallback anyway (repetitive-facade texture makes
+    the pairwise LoFTR+RANSAC chain fragile in a way COLMAP's own global
+    bundle adjustment isn't, per the session's extensive findings). So the
+    ~6 minutes of LoFTR matching + stitching was pure waste on every real
+    run: COLMAP was always going to redo its own matching regardless, and
+    always ended up being the delivered result. This mode skips straight to
+    it -- feeding COLMAP the FULL catalog directly, not a LoFTR-filtered
+    subset, since COLMAP's own registration is the more reliable filter for
+    this project's data (see CLAUDE.local.md's "왜 LoFTR 매칭을 COLMAP에
+    욱여넣지 않는가" reasoning -- COLMAP's own SIFT+incremental-SfM has been
+    hitting ~95%+ registration on this capture every single time, better
+    than forcing it to consume the weaker/riskier LoFTR matches would risk).
+
+    Writes both the `_analysis_colmap.tif`-style filenames AND copies them to
+    the plain `_analysis.tif`-style filenames, so existing consumers (e.g.
+    FacadePreviewer's MainViewModel.cs, which only ever looks for
+    `{facade}_analysis.tif`) keep working unmodified.
+    """
+    output_dir = output_dir_override if output_dir_override is not None else output_root / facade_id / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    by_id = {m.image_id: m for m in catalog}
+
+    unmatched_report: dict[str, list[str]] = {"never_matched": [], "colmap_registration_failed": []}
+
+    source_dirs = {str(Path(m.file_path).parent) for m in catalog}
+    if len(source_dirs) != 1:
+        log_event(
+            logger, "warning", "facade images span multiple source dirs, cannot run COLMAP-only mode",
+            facade_id=facade_id, source_dirs=list(source_dirs),
+        )
+        return None
+    colmap_images_dir = next(iter(source_dirs))
+    colmap_filenames = [Path(m.file_path).name for m in catalog]
+
+    t_colmap = time.time()
+    try:
+        import pycolmap
+    except ImportError:
+        log_event(logger, "warning", "pycolmap not installed, cannot run COLMAP-only mode", facade_id=facade_id)
+        return None
+
+    colmap_result = run_colmap(
+        facade_id, colmap_images_dir, colmap_filenames,
+        workspace_dir=output_dir.parent / "colmap", logger=logger,
+    )
+    log_event(
+        logger, "info", "COLMAP-only run complete",
+        stage="COLMAP_ONLY", facade_id=facade_id,
+        elapsed_s=round(time.time() - t_colmap, 2),
+        num_images_requested=colmap_result.num_images_requested,
+        num_images_registered=colmap_result.num_images_registered,
+    )
+    with open(output_dir / f"{facade_id}_colmap_report.json", "w", encoding="utf-8") as f:
+        json.dump(asdict(colmap_result), f, indent=2, ensure_ascii=False)
+    colmap_registered_stems = {Path(n).stem for n in colmap_result.registered_image_names}
+    unmatched_report["colmap_registration_failed"] = sorted(set(by_id.keys()) - colmap_registered_stems)
+
+    if not colmap_result.sparse_dir or colmap_result.num_images_registered < 4:
+        log_event(
+            logger, "warning", "too few images registered to rectify", facade_id=facade_id,
+            num_images_registered=colmap_result.num_images_registered,
+        )
+        with open(output_dir / f"{facade_id}_unmatched_images.json", "w", encoding="utf-8") as f:
+            json.dump(unmatched_report, f, indent=2, ensure_ascii=False)
+        return output_dir
+
+    effective_utm_epsg = estimate_utm_epsg(catalog)
+    if effective_utm_epsg is None:
+        log_event(
+            logger, "warning", "no GPS on any image, cannot align COLMAP reconstruction for rectification",
+            facade_id=facade_id,
+        )
+        return output_dir
+
+    reconstruction = pycolmap.Reconstruction(colmap_result.sparse_dir)
+    aligned = align_reconstruction_to_utm(reconstruction, by_id, effective_utm_epsg)
+    if not aligned:
+        log_event(
+            logger, "warning", "COLMAP reconstruction has too little GPS coverage to align to UTM, skipping rectification",
+            facade_id=facade_id,
+        )
+        return output_dir
+
+    plane = facade_plane_from_reconstruction(reconstruction)
+    t_rect = time.time()
+    rect_result = rectify_and_blend(
+        facade_id, reconstruction, plane, colmap_images_dir, cfg,
+        colmap_mean_reprojection_error_px=colmap_result.mean_reprojection_error_px,
+        dense_workspace_dir=output_dir / f"{facade_id}_dense_ws",
+    )
+    if rect_result.analysis_image is not None:
+        imwrite_unicode(output_dir / f"{facade_id}_analysis_colmap.tif", rect_result.analysis_image)
+        imwrite_unicode(output_dir / f"{facade_id}_analysis.tif", rect_result.analysis_image)
+    if rect_result.visual_image is not None:
+        imwrite_unicode(output_dir / f"{facade_id}_visual_colmap.tif", rect_result.visual_image)
+        imwrite_unicode(output_dir / f"{facade_id}_visual.tif", rect_result.visual_image)
+    imwrite_unicode(output_dir / f"{facade_id}_observed_mask_colmap.tif", rect_result.observed_mask)
+    imwrite_unicode(output_dir / f"{facade_id}_observed_mask.tif", rect_result.observed_mask)
+    with open(output_dir / f"{facade_id}_quality_report_colmap.json", "w", encoding="utf-8") as f:
+        json.dump(asdict(rect_result.quality), f, indent=2, ensure_ascii=False)
+    with open(output_dir / f"{facade_id}_quality_report.json", "w", encoding="utf-8") as f:
+        json.dump(asdict(rect_result.quality), f, indent=2, ensure_ascii=False)
+    log_event(
+        logger, "info", "COLMAP-rectified mosaic complete",
+        stage="RECTIFIED_COLMAP", facade_id=facade_id,
+        elapsed_s=round(time.time() - t_rect, 2),
+        coverage_ratio=rect_result.quality.coverage_ratio,
+        image_count=rect_result.quality.image_count,
+    )
+
+    source_images = [{"image_id": m.image_id, "file_path": m.file_path} for m in catalog]
+    with open(output_dir / f"{facade_id}_source_images.json", "w", encoding="utf-8") as f:
+        json.dump(source_images, f, indent=2, ensure_ascii=False)
+    with open(output_dir / f"{facade_id}_unmatched_images.json", "w", encoding="utf-8") as f:
+        json.dump(unmatched_report, f, indent=2, ensure_ascii=False)
 
     log_event(logger, "info", "facade complete", stage="DONE", facade_id=facade_id, output_dir=str(output_dir))
     return output_dir
@@ -324,6 +507,15 @@ def run_facade_poc(
         stage="METADATA_PARSED", facade_id=facade_id, image_count=len(catalog),
         elapsed_s=round(time.time() - t0, 2),
     )
+
+    colmap_mode = str(cfg.colmap.mode) if "mode" in cfg.colmap else "fallback"
+    if colmap_mode == "always":
+        # Skip the LoFTR matcher entirely -- COLMAP-only mode never uses it
+        # (see _run_colmap_only_pipeline's docstring for why).
+        return _run_colmap_only_pipeline(
+            facade_id, catalog, cfg, output_root, logger,
+            output_dir_override=Path(output_dir) if output_dir is not None else None,
+        )
 
     matcher = _make_matcher(cfg)
     try:

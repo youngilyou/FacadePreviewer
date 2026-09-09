@@ -12,6 +12,7 @@ entirely. Always use these instead of cv2.imread/imwrite directly.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import cv2
@@ -26,10 +27,30 @@ def imread_unicode(path: str | Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarra
 
 
 def imwrite_unicode(path: str | Path, image: np.ndarray, params: list[int] | None = None) -> bool:
+    """2026-09-08: a real 168-image FRONT run hit `OSError: [Errno 22] Invalid
+    argument` on this exact write (a small, ~78MB-raw analysis mosaic -- not a
+    2GB-plus-buffer case) right after a 20+ minute COLMAP fallback finished,
+    discarding that entire run's output. Re-running just this write against the
+    same freshly-produced image immediately after succeeded with no code
+    change, so this was a one-off transient OS-level failure (most likely
+    something else briefly holding the destination path open -- e.g. an
+    Explorer thumbnail/preview handle or AV scan on the previous version of the
+    same output file -- not a reproducible bug in the encode/write itself).
+    Losing 20+ minutes of matching+SfM to a one-off OS hiccup on the very last
+    write is not an acceptable failure mode regardless of root cause, so retry
+    with a short backoff before giving up for real.
+    """
     path = Path(path)
     ext = path.suffix if path.suffix else ".png"
     ok, buf = cv2.imencode(ext, image, params or [])
     if not ok:
         return False
-    buf.tofile(str(path))
-    return True
+    last_err: OSError | None = None
+    for attempt in range(5):
+        try:
+            buf.tofile(str(path))
+            return True
+        except OSError as e:
+            last_err = e
+            time.sleep(0.5 * (attempt + 1))
+    raise last_err

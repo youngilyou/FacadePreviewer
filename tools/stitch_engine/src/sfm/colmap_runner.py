@@ -4,11 +4,16 @@ COLMAP is never required by default (#10, #43.12 says it's a precision path,
 not baseline) — `should_run_colmap` decides *when* Phase 1's plain
 homography-chain stitch is untrustworthy enough to warrant it.
 
-Only two of #12's four trigger conditions are computed here today:
-`global_drift_score` (cycle-consistency check, graph.py) and coverage gap.
-Repeated-pattern failure and large-parallax detection need signals this
-pipeline doesn't compute yet, so they are not silently assumed false —
-`should_run_colmap` says so explicitly rather than pretending coverage.
+Three of #12's four trigger conditions are computed here today:
+`global_drift_score` (cycle-consistency check, graph.py), coverage gap, and
+(2026-09-09) unreachable_ratio -- images the 2D chain can't place at all
+(no matching path to the reference, or zero passing edges to anything) are
+a real, silent data-loss failure mode coverage_gap_ratio alone can miss,
+since that's computed only over the placed subset's own (auto-shrunk)
+canvas. Repeated-pattern failure and large-parallax detection still need
+signals this pipeline doesn't compute yet, so they are not silently assumed
+false — `should_run_colmap` says so explicitly rather than pretending
+coverage.
 
 `run_colmap` does real SfM via pycolmap (SIFT extraction -> exhaustive
 matching -> incremental mapping + bundle adjustment) and returns actual
@@ -57,6 +62,29 @@ def should_run_colmap(quality: StitchQualityReport, cfg: Config) -> tuple[bool, 
         gap = 1.0 - quality.coverage_ratio
         if gap > max_gap:
             reasons.append(f"coverage_gap_ratio={gap:.2f} > max_coverage_gap_ratio={max_gap}")
+
+    # 2026-09-09: images the 2D homography chain simply can't place at all
+    # (no matching path to the reference image) are silently dropped from
+    # the mosaic entirely -- not a spatial gap on a shrunk canvas the way
+    # coverage_gap_ratio measures, but a real photo that never appears in
+    # the output at all. This can slip past both checks above: coverage_ratio
+    # is computed only over the *placed* subset's own canvas, so it can look
+    # perfectly healthy while a whole side of the building silently vanished.
+    # Two distinct ways an image never makes it in (see mosaic.py/runner.py):
+    # never_matched_count (zero passing edge to *anything*, never even a
+    # graph node) and unreachable_image_ids (had edges, just to a different,
+    # smaller connected component than the one holding the reference).
+    max_unreachable = float(ccfg.max_unreachable_ratio) if "max_unreachable_ratio" in ccfg else 0.03
+    total_images = quality.image_count + quality.never_matched_count
+    if total_images > 0:
+        dropped = len(quality.unreachable_image_ids) + quality.never_matched_count
+        unreachable_ratio = dropped / total_images
+        if unreachable_ratio > max_unreachable:
+            reasons.append(
+                f"unreachable_ratio={unreachable_ratio:.2f} > max_unreachable_ratio={max_unreachable} "
+                f"({dropped}/{total_images} images have no path to the reference image and would "
+                f"otherwise be silently dropped from the mosaic entirely)"
+            )
 
     # #12 also lists repeated-pattern failure and large camera-distance/
     # parallax change as triggers. Neither is detected yet (would need

@@ -12,6 +12,7 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="200"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="220"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== 촬영 이미지 관리 (left sidebar) =====
@@ -486,5 +487,75 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- ===== 미매칭 이미지 (right sidebar) =====
+             Populated after a successful scan from {facadeName}_unmatched_images.json (see
+             MainViewModel.LoadUnmatchedImages): images the pipeline itself determined never
+             contributed to the stitched result (zero passing pairwise match, or reached COLMAP
+             but failed to register there), not a guess based on how a photo looks (e.g. "it's
+             tilted"). Same review-panel pattern as the left "촬영 이미지" sidebar: checkbox
+             default checked, "제외" moves the checked ones into the capture folder's "excluded"
+             subfolder (never deletes) so a re-scan skips them. Column stays reserved even when
+             empty (HasUnmatchedImages only Collapses the border's content, not the column); this
+             is the simplest option, avoiding a width-collapsing converter for what's a rare,
+             small-count panel. -->
+        <Border Grid.Column="2" Margin="12,0,0,0" Padding="6">
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource CardBorder}">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasUnmatchedImages}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="미매칭 이미지" Foreground="{StaticResource Text2}" FontSize="16"
+                           HorizontalAlignment="Center" Margin="2,0,2,6"/>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding UnmatchedImages}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Height="150" Margin="2,0,2,6" BorderThickness="1"
+                                        BorderBrush="{StaticResource Border}" Background="{StaticResource Bg}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Image Grid.Row="0" Source="{Binding ThumbnailSource}" Stretch="Uniform" Margin="2"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding Reason}" Foreground="{StaticResource Text2}"
+                                                   FontSize="9" Margin="4,0,0,0" Opacity="0.75"/>
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="3,0,0,2">
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding FileName}" Foreground="{StaticResource Text2}"
+                                                       FontSize="9" VerticalAlignment="Center" Margin="4,0,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <Button Grid.Row="2" Content="제외" Command="{Binding ExcludeUnmatchedImagesCommand}"
+                        Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>
