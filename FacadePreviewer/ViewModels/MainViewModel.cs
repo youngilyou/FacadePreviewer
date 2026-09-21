@@ -634,6 +634,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         HasUnmatchedImages = UnmatchedImages.Count > 0;
     }
 
+    // 2026-09-21 사용자 요청, CapturedFrames 쪽과 동일한 이유·동일한 토글 방식 -- 여기는
+    // IsSelected가 반대 극성(체크=제외 대상)이라 "전체 선택" 다음 클릭은 "전부 제외 대상으로
+    // 체크"가 되지만, 버튼 자체의 동작(지금 상태의 반대로 일괄 세팅)은 왼쪽과 동일하다.
+    [RelayCommand]
+    private void ToggleSelectAllUnmatchedImages()
+    {
+        bool allSelected = UnmatchedImages.Count > 0 && UnmatchedImages.All(i => i.IsSelected);
+        bool next = !allSelected;
+        foreach (var item in UnmatchedImages)
+            item.IsSelected = next;
+    }
+
     private void AppendScanLog(string? line)
     {
         if (line == null)
@@ -852,6 +864,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
             }
         }
+    }
+
+    // 2026-09-21 사용자 요청("좌/우 썸네일 리스트 모든 내용 선택/미선택 체크 버튼 필요", 이후
+    // "전체 선택/전체 해제 하나의 버튼으로"): 캡처 세션 하나가 수백~수천 장까지 가는 게
+    // 흔해서, "이 세션은 거의 다 버리고 몇 장만 남긴다"/"거의 다 남기고 몇 장만 뺀다" 같은
+    // 전부-먼저 시나리오에서 매번 하나씩 클릭하는 게 비현실적 -- IsIncluded 값만 일괄 세팅
+    // (파일은 안 건드림, 실제 이동은 여전히 RemoveExcludedFramesCommand가 함). 버튼 하나로
+    // 토글: 지금 전부 체크돼 있으면 전체 해제, 아니면(하나도 없거나 일부만) 전체 선택 --
+    // "다음 클릭이 뭘 할지"가 항상 "지금 상태와 반대"로 예측 가능하다.
+    [RelayCommand]
+    private void ToggleSelectAllCapturedFrames()
+    {
+        bool allIncluded = CapturedFrames.Count > 0 && CapturedFrames.All(i => i.IsIncluded);
+        bool next = !allIncluded;
+        foreach (var item in CapturedFrames)
+            item.IsIncluded = next;
     }
 
     private static string SanitizeForFolderName(string s)
