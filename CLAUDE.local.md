@@ -1976,3 +1976,95 @@ forward 방향을 세계 좌표로 변환해보니 거의 정확히 Z축과 일�
    불일치로 비틀어져 보임 — 오늘 발견한 것과 같은 계열(정렬 누락)의 문제인지, 아니면
    진짜 새로운 결함인지 아직 미확인. **반드시 align_reconstruction_to_utm을 포함한
    스크래치 스크립트로 재현/조사할 것** (이번 세션의 핵심 교훈, [[feedback_replicate_pipeline_preprocessing_in_test_scripts]] 참고).
+
+## 2026-09-28 세션 — `rt/FacadeImage/DRONE01` 0장 수신 근본원인 5개 규명 + 정상 수신 확인
+
+### 증상
+"FacadePreviewer 데이터 수신이 안되요. DDS 연결 확인" — DDS-Router 웹 UI로 보면 참가자/라우트가
+있는 것처럼 보였고, previewer는 "DDS 구독 시작됨 ... 수신 대기 중"까지는 뜨는데 `sensor 0 · video 0`
+에서 멈춰있었음.
+
+### 원인 1 — `ImageSensorFrame`(sensor 토픽) 은 fastddsgen 4.3.0, 나머지 생태계는 4.0.6
+`idl/generated/map2stitch_msgs/msg/ImageSensorFrame*` 가 previewer 자체 번들 fastddsgen(4.3.0,
+`tools/ExtraModule`)로 생성돼 있었음(`ExtensibilityKind::APPENDABLE`). MissionPlanner_dds/
+DDS-Router/MngData 는 전부 fastddsgen **4.0.6**(`Z:\DDS_Platform\DDS-Router\thirdparty\Fast-DDS-Gen\
+build\libs\fastddsgen.jar`, `-typeros2` 옵션) 사용 중 — 2026-08-12 세션에 `VideoTsPacket` 에서 이미
+겪었던 것과 같은 ExtensibilityKind 불일치 클래스. **다만 이건 실제로는 무해했음** — `sensor` 토픽은
+`MainViewModel.cs` 자체 주석에 "실제 그 토픽에 발행하는 쪽은 없다"고 적혀있는 더미 인자였음.
+그래도 통일해두는 게 맞아서 4.0.6+`-typeros2`로 재생성해 교체(빌드 확인, VideoTsPacket 과 byte-for-
+byte 동일 생성 절차로 검증). **`-typeros2` 는 실제 C++ 클래스/네임스페이스를 안 바꾼다** — 여전히
+평범한 `map2stitch_msgs::msg::ImageSensorFrame` (다른 두 실사용 타입 `ardupilot_msgs::msg::
+MavlinkData`, `filemsg_msgs::msg::filemsg` 도 동일하게 확인) — 바뀌는 건 wire 레벨 등록 이름
+(`set_name("...::dds_::ImageSensorFrame_")`)과 ExtensibilityKind 뿐. 그래서 `DdsFrameSubscriber.cpp`
+등 기존 호출부 수정 없이 파일만 교체.
+
+### 원인 2 (진짜 원인 그 1) — previewer 도메인 하드코딩 0, DDS-Router 참가자는 domain 30
+`MainViewModel.cs` `TryEnsureDdsRegistered()` 가 `_dds.Start(0, ...)` 로 하드코딩. DDS-Router
+`crack_inspection_analysis.yaml` 의 `FacadePreviewerDomainParticipant` 는 `domain: 30`. 서로 다른
+도메인이라 애초에 discovery 자체가 안 됨(에러도 없이 조용히 실패). 30 으로 수정 + 기본 포트도
+domain-0 기준 `7410`(7400+250*0+10) 에서 domain-30 기준 `14910`(7400+250*30+10) 으로 수정.
+로컬에 저장된 `bin/Debug/net9.0-windows/config/main_window_settings.ini` 의 `DdsRouterPort` 도
+같이 갱신(코드 기본값만 바꾸면 기존 저장값이 계속 이걸 덮어씀).
+
+### 원인 3 (진짜 원인 그 2) — DDS-Router 라우트 테이블에 Drone→FacadePreviewer 경로가 없었음
+`rtmp_video_bridge_streams.txt`(`live|DRONE01|10|rt/FacadeImage/DRONE01|h264|DRONE01`) 확인 결과
+`rtmp_video_bridge` 는 실제로 **domain 10**(`DroneDomainParticipant` 와 같은 도메인)에 발행. 그런데
+`crack_inspection_analysis.yaml` 의 블랭킷 라우트 `DroneDomainParticipant -> [ControlCenterDomain
+Participant, EchoParticipant]` 에도, `topic-routes` 어디에도 `FacadePreviewerDomainParticipant` 로
+가는 경로가 전혀 없었음 — MissionPlanner_dds 2026-09-12 세션의 "관제→드론 라우팅 dst 누락"과
+정확히 같은 버그 클래스. **수정**: `topic-routes` 에 `rt/FacadeImage/DRONE01`
+(`type: map2stitch_msgs::msg::dds_::VideoTsPacket_`, `src: DroneDomainParticipant`,
+`dst: [FacadePreviewerDomainParticipant]`) 추가.
+
+### 원인 4 (진짜 원인 그 3) — Windows 방화벽 인바운드 규칙 없음
+`FacadePreviewer.exe`/`dotnet` 둘 다 인바운드 방화벽 규칙이 전혀 없었음(`Get-NetFirewallRule` 로
+확인). SPDP/EDP discovery 는 이 앱 기준 아웃바운드라 항상 성공하지만, 실제 RTPS user-data 패킷은
+새 인바운드 UDP 라 규칙 없이는 조용히 드롭됨 — DroneGateway2 세션의 `FilemsgBridge.exe` 때와
+정확히 같은 패턴. 관리자 PowerShell 에서:
+```powershell
+New-NetFirewallRule -DisplayName "FacadePreviewer.exe (Private/Domain)" -Direction Inbound `
+  -Program "D:\ClaudePr\FacadePreviewer\FacadePreviewer\bin\Debug\net9.0-windows\FacadePreviewer.exe" `
+  -Action Allow -Profile Private,Domain
+```
+
+### 원인 5 — 마지막엔 그냥 RTMP 소스가 안 켜져 있었음
+위 4개를 다 고쳐도 `rtmp_video_bridge` 자체 로그(`/tmp/rtmp_video_bridge_restart.log`, stdout/stderr
+리다이렉트)에 `"accepted connection from ..."`/`"publish() accepted for ..."` 가 한 번도 안 찍혀서
+확인됨 — 실제 RTMP 클라이언트가 접속한 적이 없었음. 사용자가 RTMP 송출을 시작하자 즉시
+`publish() accepted for 'live/DRONE01' from 192.168.100.219:...` + `RTMP->TS->DDS seq=...` 연속
+출력 → **previewer 수신 확인 완료**.
+
+### 실행/설정 방법 (정상 동작 확정 구성, 2026-09-28 기준)
+
+**1) `rtmp_video_bridge_streams.txt`** (`Z:\DDS_Platform\DDS-Router\config\rtmp_video_bridge_streams.txt`,
+VM 에서는 `~/DDS_Mng/DDS_Platform/DDS-Router/config/rtmp_video_bridge_streams.txt` — DdsMonitor
+RtmpStreamController.Apply 가 관리, 수동 편집 금지):
+```
+# app|stream|dds_domain|pub_topic|codec|stream_id
+live|DRONE01|10|rt/FacadeImage/DRONE01|h264|DRONE01
+```
+→ `rtmp_video_bridge <streams.txt> 0.0.0.0 1935` 로 기동 중이어야 함(`ps aux | grep rtmp_video_bridge`).
+
+**2) DDS-Router** — `crack_inspection_analysis.yaml` 로 기동(`--config-path ... --debug`).
+`FacadePreviewerDomainParticipant` 는 `domain: 30` 고정. `topic-routes` 에 위 원인 3 항목이 반드시
+있어야 함(빠지면 이 세션과 동일하게 discovery 는 되는데 데이터가 0). yaml 수정 후에는 **반드시
+재시작** 필요(`kill <pid>` 후 `scripts/run_dds_router.sh <yaml경로>` 로 재기동 — 절대 `ddsrouter`
+바이너리 직접 실행하지 말 것, env.sh 안 거치면 `std::bad_alloc`).
+
+**3) FacadePreviewer 앱 쪽 (Windows, .219)**:
+- 도메인은 코드에 하드코딩(`MainViewModel.cs` `_dds.Start(30, ...)`) — UI 에 노출 안 됨.
+- UI 의 "HOST IP"/"Port" 는 DDS-Router 가 있는 VM 주소 + **14910**(domain 30 의 참가자-index-0
+  메타트래픽 유니캐스트 포트, `7400+250*30+10`). 도메인을 또 바꾸면 이 포트도 같이 재계산할 것.
+- Windows 방화벽에 위 원인 4 규칙이 반드시 있어야 함. 앱을 다른 경로/이름으로 재빌드하면 규칙도
+  그 경로에 맞춰 다시 추가해야 함(exe 경로 기준 규칙이라 경로 바뀌면 안 먹음).
+
+**4) 전체 순서 확인 체크리스트** (매칭은 되는데 0 인 경우 이 순서대로 확인 —
+[[dds-zero-data-despite-match-checklist]] 참고, Claude 자동 메모리에도 저장해둠):
+실제 RTMP 소스가 스트리밍 중인가 → fastddsgen 버전/`-typeros2` 일치하는가 → DDS-Router 라우트
+dst 목록에 빠진 게 없는가 → 앱 도메인이 DDS-Router 참가자 도메인과 일치하는가 → 수신 측 Windows
+방화벽 인바운드 규칙이 있는가.
+
+### 커밋
+- FacadePreviewer: `ImageSensorFrame*` 재생성분, `CMakeLists.txt` 주석, `MainViewModel.cs` 도메인/
+  포트 수정. (`tools/stitch_engine/` 변경분은 이번 세션과 무관 — 별도 진행 중이던 작업, 커밋 제외)
+- DDS-Router (`ddsrouterfork`): `crack_inspection_analysis.yaml` 라우트 추가.

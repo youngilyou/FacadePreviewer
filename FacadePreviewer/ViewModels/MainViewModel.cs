@@ -118,9 +118,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // site (현장에서 DDS-Router IP/포트가 매번 달라질 수 있음). Empty host = no override,
     // falls back to this process's FACADE_DDS_INITIAL_PEER/FACADE_DDS_INTERFACE_WHITELIST
     // env vars if set (see DdsFrameSubscriber.cpp's MakeUdpOnlyQos). Port defaults to the
-    // domain-0/participant-index-0 metatraffic-unicast port (7400 + 250*domain + 10).
+    // domain-30/participant-index-0 metatraffic-unicast port (7400 + 250*domain + 10) --
+    // FacadePreviewerDomainParticipant in DDS-Router's crack_inspection_analysis.yaml is domain 30,
+    // matching TryEnsureDdsRegistered's _dds.Start(30, ...) below (was hardcoded 0, mismatched
+    // against the router's actual participant domain -- 2026-09-28 fix).
     [ObservableProperty] private string _ddsRouterHost = "";
-    [ObservableProperty] private int _ddsRouterPort = 7410;
+    [ObservableProperty] private int _ddsRouterPort = 14910;
     [ObservableProperty] private string _localInterfaceIp = "";
 
     // GenerateJson이 만든 Topic/Key/DRONE json(예: previewer/data/우리아파트.json) 하나를
@@ -242,7 +245,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string peerDesc = string.IsNullOrWhiteSpace(DdsRouterHost) ? "peer override 없음(env var 사용)" : $"peer {DdsRouterHost}:{DdsRouterPort}";
         ConnectionStatusText = $"DDS 구독 시작됨 ({LoadedAssignment.Drone}, {videoTopic}, {peerDesc}) — 수신 대기 중";
         IsConnected = true; // "subscribing" -- StartAsync doesn't report publisher-matched yet, see DdsFrameSubscriber
-        _dds.Start(0, sensorTopic, videoTopic, DdsRouterHost, DdsRouterPort, LocalInterfaceIp);
+        // Domain 30 -- matches FacadePreviewerDomainParticipant in DDS-Router's
+        // crack_inspection_analysis.yaml. Was hardcoded 0 (2026-09-28 fix): the real
+        // RtmpVideoBridge for this DRONE01 stream publishes into the router on domain 30, so a
+        // domain-0 participant here could never discover it regardless of topic/type correctness.
+        _dds.Start(30, sensorTopic, videoTopic, DdsRouterHost, DdsRouterPort, LocalInterfaceIp);
         return true;
     }
 

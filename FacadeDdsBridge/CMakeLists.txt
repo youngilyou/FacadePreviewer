@@ -95,6 +95,20 @@ add_library(FacadeDdsBridge SHARED
     src/FacadeDdsBridge.cpp
     src/RsyncTransfer.h
     src/RsyncTransfer.cpp
+    # map2stitch_msgs (ImageSensorFrame + VideoTsPacket): 2026-09-28 -- both regenerated with
+    # `java -jar fastddsgen.jar -replace -ppDisable -typeros2 -I . -d <out> <Type>.idl` using the
+    # DDS-Router fork's fastddsgen 4.0.6 jar (Z:\DDS_Platform\DDS-Router\thirdparty\Fast-DDS-Gen\
+    # build\libs\fastddsgen.jar), matching every other participant in this DDS ecosystem
+    # (MissionPlanner_dds/ConnectDDS, DDS-Router, MngData backend_core all use 4.0.6). Previously
+    # this previewer's bundled ExtraModule fastddsgen was 4.3.0, which defaults new struct types to
+    # ExtensibilityKind::APPENDABLE instead of FINAL -- a mismatched XTypes TypeObject hash that
+    # silently breaks cross-host DDS matching even when field names/types are identical (root-caused
+    # for VideoTsPacket in the 2026-08-12 session below; ImageSensorFrame carried the same
+    # unverified risk until this fix). -typeros2 is what forces FINAL + the ROS2-style wire type
+    # name (`map2stitch_msgs::msg::dds_::ImageSensorFrame_`) -- it does NOT rename the actual C++
+    # class/namespace (still plain `map2stitch_msgs::msg::ImageSensorFrame`), so no call-site changes
+    # were needed. Verified byte-for-byte identical regen of VideoTsPacket against the already-fixed
+    # committed copy before trusting this for ImageSensorFrame.
     ${GENERATED_DIR}/ImageSensorFramePubSubTypes.cxx
     ${GENERATED_DIR}/ImageSensorFrameCdrAux.ipp
     ${GENERATED_DIR}/ImageSensorFrameTypeObjectSupport.cxx
