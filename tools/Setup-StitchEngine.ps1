@@ -51,19 +51,7 @@ Invoke-Checked "LoFTR outdoor weights (pre-download)" {
     & $Python -c "import kornia.feature as KF; KF.LoFTR(pretrained='outdoor'); print('LoFTR weights ready')"
 }
 
-$check = @'
-import importlib, sys
-mods = ["torch", "kornia", "cv2", "numpy", "pandas", "yaml", "scipy", "networkx", "PIL", "pycolmap", "pyproj"]
-for m in mods:
-    mod = importlib.import_module(m)
-    print(f"  {m:10s} {getattr(mod, '__version__', '')}")
-import pycolmap, torch
-major, minor = (int(x) for x in pycolmap.__version__.split(".")[:2])
-if (major, minor) < (4, 2):
-    sys.exit(f"pycolmap {pycolmap.__version__} installed, 4.2 or newer required")
-print("  CUDA available:", torch.cuda.is_available())
-'@
-Invoke-Checked "import check" { & $Python -c $check }
+Invoke-Checked "import check" { & $Python (Join-Path $engineDir "check_env.py") }
 
 Write-Host ""
 Write-Host "stitch_engine is ready. FacadePreviewer's scan will use: $(& $Python -c 'import sys; print(sys.executable)')"
