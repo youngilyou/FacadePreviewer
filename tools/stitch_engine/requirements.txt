@@ -20,7 +20,9 @@ pyyaml>=6.0
 scipy>=1.10
 networkx>=3.0
 pillow>=10.0
-# 4.3.0: the COLMAP-only pipeline uses IncrementalPipelineOptions(use_prior_position=...),
-# Reconstruction.deregister_frame and Database pose priors, all tested on 4.3.0 (2026-09-29).
-pycolmap==4.3.0
+# 4.2.0 = newest pycolmap release on PyPI (2026-09-29). The dev machine runs a local 4.3.0 source
+# build (CUDA COLMAP, see CLAUDE.local.md 2026-09-09) that isn't on PyPI; the COLMAP-only pipeline
+# (IncrementalPipelineOptions(use_prior_position=...), deregister_frame, Database pose priors) was
+# verified end to end on 4.2.0 from a fresh clone + fresh venv.
+pycolmap==4.2.0
 pyproj==3.7.2

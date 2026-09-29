@@ -48,7 +48,7 @@ that's already done on a re-run:
    the `python` on `PATH` (the one the app launches for 분석 시작): the CUDA
    build of torch when an NVIDIA GPU is present (a plain `pip install torch`
    on Windows is CPU-only, and LoFTR matching then takes hours), then
-   `tools\stitch_engine\requirements.txt` (pycolmap **4.3.0**), then
+   `tools\stitch_engine\requirements.txt` (pycolmap **4.2.0**), then
    downloads the LoFTR weights so the first scan works offline, and finally
    checks every import. Needs Python 3.10+ (Miniconda is fine) on `PATH`
    and internet access while it runs.

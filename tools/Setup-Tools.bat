@@ -68,7 +68,7 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo [4/4] stitch_engine Python packages ^(CUDA torch, pycolmap 4.3.0, LoFTR weights^)
+echo [4/4] stitch_engine Python packages ^(CUDA torch, pycolmap 4.2.0, LoFTR weights^)
 echo ============================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-StitchEngine.ps1"
 if errorlevel 1 (

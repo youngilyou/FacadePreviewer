@@ -4,7 +4,7 @@
 #
 #   1. torch: the CUDA build when an NVIDIA GPU is present (nvidia-smi on PATH). A bare
 #      `pip install torch` on Windows gets the CPU-only build, and LoFTR matching on CPU takes hours.
-#   2. tools/stitch_engine/requirements.txt (pycolmap 4.3.0, kornia, opencv, pyproj, ...).
+#   2. tools/stitch_engine/requirements.txt (pycolmap 4.2.0, kornia, opencv, pyproj, ...).
 #   3. LoFTR "outdoor" weights, downloaded now into the torch hub cache so the first scan on a
 #      field laptop without internet doesn't fail.
 #   4. Import/version check of everything the engine uses.
@@ -58,8 +58,9 @@ for m in mods:
     mod = importlib.import_module(m)
     print(f"  {m:10s} {getattr(mod, '__version__', '')}")
 import pycolmap, torch
-if pycolmap.__version__ != "4.3.0":
-    sys.exit(f"pycolmap {pycolmap.__version__} installed, 4.3.0 required")
+major, minor = (int(x) for x in pycolmap.__version__.split(".")[:2])
+if (major, minor) < (4, 2):
+    sys.exit(f"pycolmap {pycolmap.__version__} installed, 4.2 or newer required")
 print("  CUDA available:", torch.cuda.is_available())
 '@
 Invoke-Checked "import check" { & $Python -c $check }
