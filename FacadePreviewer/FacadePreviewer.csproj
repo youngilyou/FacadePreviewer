@@ -17,6 +17,9 @@
          패키지/버전, 완전히 별도의 로컬 계정 저장소(%APPDATA%\FacadePreviewer\users.db). -->
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <!-- App.xaml.cs's startup orphan-process cleanup (Win32_Process WMI query for command line,
+         since Process itself has no way to read another process's argv). -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
   </ItemGroup>
 
   <!-- 로그인 화면 배경 사진 (Views/LoginWindow.xaml). -->

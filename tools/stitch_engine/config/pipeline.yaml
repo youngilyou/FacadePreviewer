@@ -53,18 +53,37 @@ stitch:
   analysis_feather_blend: false
   visual_multiband_blend: false
   multiband_num_bands: 5
+  # 2026-09-28: user's 15-min field-use budget ("blend 안해도 됨") -- skip blend_visual's
+  # exposure-compensation + multiband blend entirely and reuse blend_analysis's hard-seam
+  # composite for visual_image too. See rectify_and_blend's own comment for the cost breakdown.
+  fast_paste_only: true
 
 colmap:
   enabled: true
-  # "fallback" (default): run 1st-stage LoFTR matching + pairwise-homography
-  # stitching first, only fall through to COLMAP if that result's drift/
-  # coverage fails the thresholds below.
-  # "always": skip the 1st stage entirely and go straight to COLMAP with the
-  # full image catalog (2026-09-09 CLAUDE.local.md entry -- COLMAP never
-  # reuses the 1st stage's matches anyway, and every real repetitive-facade
-  # capture so far has triggered fallback regardless, so the 1st stage was
-  # pure wasted time on this project's actual data).
-  mode: fallback
+  # "fallback": run 1st-stage LoFTR matching + pairwise-homography stitching
+  # first, only fall through to COLMAP if that result's drift/coverage
+  # fails the thresholds below.
+  # "always" (default since 2026-09-13): skip LoFTR/stitching entirely and
+  # go straight to a SINGLE COLMAP mapping+render pass on whatever images
+  # are currently in the capture folder (2026-09-09 CLAUDE.local.md entry --
+  # COLMAP never reuses the 1st stage's matches anyway, and every real
+  # repetitive-facade capture so far has triggered fallback regardless, so
+  # the 1st stage was pure wasted time on this project's actual data --
+  # LoFTR matching alone runs 20+ minutes on a real capture). Images that
+  # barely see the wall (sky/rooftop-equipment shots) are flagged as a
+  # warning after that single pass (`{facade}_off_wall_warning.json`), never
+  # auto-excluded/auto-rerun -- the operator already has a manual
+  # review-and-remove step for captured frames before "스캔 시작" (see
+  # MainViewModel's CapturedFrames sidebar), and a real second COLMAP pass
+  # on top of that would cost minutes for a job manual curation already
+  # does in seconds (2026-09-13, explicit user call: automatic 2-pass
+  # tried first, then dropped in favor of this for exactly that reason) --
+  # see src/pipeline/runner.py::_run_colmap_only_pipeline for the full
+  # reasoning. User's explicit purpose for this app: on-site "did I miss a
+  # spot" coverage check, not final crack measurement (that's the separate
+  # main CheckCrackV2 repo on full-res rsync'd originals) -- so speed over
+  # accuracy is the right tradeoff here.
+  mode: always
   max_drift_px: 10.0
   max_seam_drift_px: 20.0
   max_coverage_gap_ratio: 0.5
@@ -77,6 +96,44 @@ colmap:
   # 0.03 = trigger COLMAP fallback once more than 3% of this facade's
   # matchable images would otherwise be lost this way.
   max_unreachable_ratio: 0.03
+  # 2026-09-29: ported from the main CheckCrackV2 repo -- feeds LoFTR (not SIFT) matches into
+  # COLMAP's database (src/matching/loftr_colmap_bridge.py). Root-cause fix for the exact
+  # repetitive-facade mismatch problem this app fought all session on this same BACK building
+  # (registration stuck around 10-30% with SIFT, or a geometrically degenerate chain-drifted
+  # result once more of it did register) -- confirmed in the main repo on this building's FRONT
+  # facade: 422/422 images registered with LoFTR. Needs a matcher (src/matching/loftr_matcher.py,
+  # already used for previewer's own 1st-stage H-chain path) and real GPU time per pair, so it's
+  # config-gated rather than unconditional -- set false to fall back to plain SIFT matching.
+  use_loftr_matching: true
+  # 2026-09-29: skip a photo taken within this GPS distance of the last photo kept (drops the
+  # hover duplicates at each column's top/bottom, keeps every climbing photo). 1.5 on the 429-photo
+  # BACK facade keeps 216. 0 = use all photos. See runner.py for why this replaced image_stride.
+  min_photo_spacing_m: 1.5
+  # Lighter bundle adjustment during mapping. BACK, 215 photos: COLMAP 4.4 -> 1.6 min (~12 -> ~9 min
+  # total), same result (coverage 0.937 vs 0.940). On all 429 photos it left a hole at the top.
+  fast_bundle_adjustment: false
+
+wall_filter:
+  # 2026-09-28: pre-filter obvious non-wall frames (sky/mountains/distant ground, a serpentine
+  # flight's column-turn frames) before COLMAP ever sees them -- see
+  # src/capture/image_catalog.py's filter_wall_like_images docstring for why (root-caused a real
+  # 499-image run whose incremental_mapping fragmented into repeated from-scratch restarts, 932+
+  # next_image_callback firings for 499 actual images, still not done after ~15 minutes).
+  # 2026-09-29: default flipped to OFF -- user's explicit call ("Colmap -> 필터 -> colmap ->
+  # 스티칭 하지 말고 Colmap -> 스티칭"), and confirmed on real SD-card photos this heuristic's
+  # threshold (calibrated on previewer's own tiny 320px video frames) doesn't transfer at all
+  # (measured 18-62 on real photos vs the 800 threshold -- would have excluded every image). With
+  # LoFTR matching (colmap.use_loftr_matching below) genuinely non-wall content just fails to
+  # match anything and stays unregistered on its own, no separate filter stage needed.
+  enabled: false
+  # Grayscale Laplacian variance (cv2.Laplacian(...).var()) -- a standard blur/texture-density
+  # metric, higher means more fine detail/edges. Calibrated empirically against a real capture:
+  # pure landscape/aerial frames measured ~250-800, a frame showing even a partial close wall
+  # section measured ~900-1000+, a full close-up facade frame measured ~1900. 800 sits in the gap,
+  # erring toward keeping a borderline frame over excluding one with real wall content. Retune
+  # here (no code change) if a facade's legitimate wall is itself unusually low-texture (e.g. a
+  # plain unpainted concrete wall) and starts getting wrongly excluded.
+  min_laplacian_variance: 800.0
 
 dense:
   # GPU-only (COLMAP's dense-stereo module has no CPU implementation --

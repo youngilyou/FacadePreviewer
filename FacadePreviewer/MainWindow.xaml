@@ -205,25 +205,35 @@
                         <!-- 분석 시작 진행률: stitch_folder.py의 JSON 로그 라인을 파싱한 근사치
                              (MainViewModel.TryUpdateScanProgress), 실제 시간 예측이 아니라
                              "멈춘 게 아니라 진행 중"임을 보여주는 용도. IsScanning일 때만 표시. -->
+                        <!-- 2026-09-29: also shows the elapsed time large (ScanElapsedText, ticks every
+                             second) and stays visible with the final total after the scan ends;
+                             ScanElapsedText is "" before any scan, which hides this row. -->
                         <Grid Grid.Row="1" Margin="8,0,8,6">
                             <Grid.Style>
                                 <Style TargetType="Grid">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Setter Property="Visibility" Value="Visible"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsScanning}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible"/>
+                                        <DataTrigger Binding="{Binding ScanElapsedText}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Grid.Style>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <ProgressBar Grid.Column="0" Minimum="0" Maximum="100" Value="{Binding ScanProgressPercent, Mode=OneWay}"
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="진행 시간" Foreground="{StaticResource Text2}" FontSize="14"
+                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding ScanElapsedText}" Foreground="{StaticResource Accent}"
+                                           FontSize="36" FontWeight="Bold" FontFamily="Consolas" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding ScanProgressPercent, Mode=OneWay}"
                                          Height="6" VerticalAlignment="Center" Margin="0,0,10,0"
                                          Background="{StaticResource Surface2}" Foreground="{StaticResource Accent}" BorderThickness="0"/>
-                            <TextBlock Grid.Column="1" Foreground="{StaticResource Text2}" FontSize="11" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="2" Foreground="{StaticResource Text2}" FontSize="11" VerticalAlignment="Center">
                                 <TextBlock.Text>
                                     <MultiBinding StringFormat="{}{0:0}% — {1}">
                                         <Binding Path="ScanProgressPercent"/>
@@ -236,11 +246,17 @@
                         <Grid Grid.Row="2">
                             <!-- Shown before "분석 시작" is ever clicked (ScanLogText still empty,
                                  no result yet); see MainViewModel.RunScan, which is the only place
-                                 ScanLogText gets its first line appended. -->
-                            <TextBlock Text="준비중" FontSize="40" Foreground="{StaticResource Text2}"
+                                 ScanLogText gets its first line appended. Text switches to "분석
+                                 시작 중..." while IsScanning is true but stitch_folder.py hasn't
+                                 printed its first line yet (library imports/COLMAP init can take a
+                                 while). Otherwise this still read "준비중" ("not started") right
+                                 after the click actually registered, which looked like the button
+                                 hadn't done anything (2026-09-28). -->
+                            <TextBlock FontSize="40" Foreground="{StaticResource Text2}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="준비중"/>
                                         <Setter Property="Visibility" Value="Collapsed"/>
                                         <Style.Triggers>
                                             <MultiDataTrigger>
@@ -251,6 +267,9 @@
                                                 </MultiDataTrigger.Conditions>
                                                 <Setter Property="Visibility" Value="Visible"/>
                                             </MultiDataTrigger>
+                                            <DataTrigger Binding="{Binding IsScanning}" Value="True">
+                                                <Setter Property="Text" Value="분석 시작 중..."/>
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </TextBlock.Style>
@@ -472,6 +491,11 @@
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
                             <Button Content="캡처 시작" Command="{Binding StartCaptureCommand}" Margin="0,0,8,0"/>
                             <Button Content="캡처 중지" Command="{Binding StopCaptureCommand}" Margin="0,0,8,0"/>
+                            <!-- Points 분석 시작/커버리지 미리보기 at a folder from a past session (see
+                                 MainViewModel.LoadExistingCaptureFolder). StartCapture always makes a
+                                 fresh timestamped folder, so this is the only way back into already-
+                                 captured frames without re-flying if the app was closed/crashed. -->
+                            <Button Content="기존 폴더 불러오기..." Command="{Binding LoadExistingCaptureFolderCommand}" Margin="0,0,8,0"/>
                             <Button Content="분석 시작" Command="{Binding RunScanCommand}" Margin="0,0,8,0"/>
                             <Button Content="초기화" Command="{Binding ResetCommand}" Margin="0,0,8,0"/>
                             <Button Content="고해상도 전송..." Click="OnOpenTransferSettings"/>

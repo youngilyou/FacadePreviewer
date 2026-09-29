@@ -5,7 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -43,9 +45,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Capture cadence/size: previewer's own design target (CLAUDE.local.md), not a real camera
     // calibration choice -- a fixed square avoids per-drone/per-lens aspect-ratio bookkeeping
-    // for a coverage-preview tool that doesn't need native resolution.
-    private static readonly TimeSpan CaptureInterval = TimeSpan.FromSeconds(0.5);
-    private const int CaptureSizePx = 640;
+    // for a coverage-preview tool that doesn't need native resolution. 2fps -> 1fps (2026-09-28,
+    // user request): halves the total frame count for a typical facade (~1000 -> ~500), which
+    // halves RunScan's total SIFT/matching/mapping cost directly -- 2fps was producing more
+    // frames than a ~2-3s-apart serpentine flight actually needed for adequate overlap.
+    private static readonly TimeSpan CaptureInterval = TimeSpan.FromSeconds(1.0);
+    // 640 -> 320 (2026-09-28, user decision): this app's RunScan output is used purely as a
+    // coverage/completeness check ("면 촬영을 다했는지가 핵심" -- crack-level visual detail is
+    // explicitly not a requirement here, that's a separate higher-resolution pipeline's job), so
+    // there's no real quality cost to cutting SIFT's pixel count (and therefore extraction +
+    // matching time) by 4x. Watch for coverage_ratio/unreachable_ratio creeping up if this ever
+    // goes lower than 320 -- too few SIFT keypoints on a weak-texture wall section can fail
+    // pairwise matching and falsely look like a missed spot rather than an actual gap.
+    private const int CaptureSizePx = 320;
 
     private readonly DdsBridgeService _dds = new();
 
@@ -59,6 +71,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string? _captureDir;
     private int _capturedFrameCount;
     private DateTime _lastCaptureUtc = DateTime.MinValue;
+    // Set only by LoadExistingCaptureFolder (see its own doc comment); null means RunScan derives
+    // facadeName from the 동/측정 장소 combo boxes as usual.
+    private string? _loadedFacadeNameOverride;
 
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _connectionStatusText = "HOST 연결 안 됨";
@@ -79,6 +94,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // to tell "still moving" from "stuck".
     [ObservableProperty] private double _scanProgressPercent;
     [ObservableProperty] private string _scanStageText = "";
+    // 분석 시작 elapsed time, shown large next to the progress bar (2026-09-29, user request).
+    // Ticks every second while the scan runs and keeps the final total afterwards; "" hides it.
+    [ObservableProperty] private string _scanElapsedText = "";
+    private readonly Stopwatch _scanStopwatch = new();
+    private System.Windows.Threading.DispatcherTimer? _scanElapsedTimer;
     // Set once RunScan finishes successfully and the output analysis mosaic loads -- the scan
     // log view switches to showing this instead (see MainWindow.xaml's DataTrigger on
     // HasScanResult). Cleared by StartCapture/Reset so a fresh capture doesn't keep showing a
@@ -358,6 +378,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ScanResultImage = null;
         HasScanResult = false;
         ScanLogText = "";
+        _scanLogLines.Clear();
+        ScanElapsedText = "";
         CapturedFrames.Clear();
         HasCapturedFrames = false;
         SelectedFrameImage = null;
@@ -375,6 +397,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _captureDir = dir;
             _capturedFrameCount = 0;
         }
+        _loadedFacadeNameOverride = null;
         _lastCaptureUtc = DateTime.MinValue;
         CapturedFrameCountDisplay = 0;
         CaptureFolderText = dir;
@@ -397,6 +420,113 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsConnected = false;
         ConnectionStatusText = "HOST 연결 안 됨";
         StatusMessage = $"캡처 중지됨 — {_capturedFrameCount}장 저장됨";
+
+        // Catch-up call: mops up whatever tail of frames landed since the last periodic
+        // IncrementalExtractionFrameInterval trigger, so clicking "분석 시작" right after this
+        // still gets the full benefit of the already-extracted features instead of missing the
+        // last few. Fire-and-forget same as the periodic trigger -- RunScan's own extraction call
+        // is still correct (just slower) if this hasn't finished by the time the operator clicks.
+        string? dirForCatchUp;
+        lock (_captureLock)
+            dirForCatchUp = _captureDir;
+        if (dirForCatchUp != null)
+            RunIncrementalExtraction(dirForCatchUp);
+    }
+
+    // Points RunScan at a capture folder from a PAST session (this process's
+    // own _captureDir is in-memory only -- StartCapture always makes a brand-new timestamped
+    // folder, so reopening the app or a crash/close mid-scan otherwise leaves no way back into an
+    // already-fully-captured folder except re-flying the drone). Added 2026-09-28 after exactly
+    // that happened: RunScan's subprocess got killed along with an orphan-process cleanup, leaving
+    // 998 already-captured frames on disk with no in-app path to analyze them.
+    [RelayCommand]
+    private async Task LoadExistingCaptureFolder()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "기존 촬영 폴더 불러오기 (분석/커버리지 미리보기용)",
+            InitialDirectory = Directory.Exists(CaptureRootPath) ? CaptureRootPath : AppContext.BaseDirectory,
+        };
+        if (dialog.ShowDialog() != true)
+            return;
+        string dir = dialog.FolderName;
+
+        // 2026-09-28: was "frame_*.jpg" only (this app's own live-capture naming) -- broadened to
+        // any .jpg/.jpeg so a folder of real SD-card photos (e.g. DJI_0023.JPG, no "frame_" prefix
+        // at all) can be loaded too, not just this app's own captures. Windows file matching is
+        // already case-insensitive, so "*.jpg" alone also matches ".JPG"; ".jpeg" added for parity
+        // with stitch_engine's own scan_images() extension set.
+        string[] files = Directory.GetFiles(dir, "*.jpg")
+            .Concat(Directory.GetFiles(dir, "*.jpeg"))
+            .Distinct()
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToArray();
+        if (files.Length == 0)
+        {
+            StatusMessage = $"불러오기 실패 — {dir}에 jpg 이미지가 없습니다";
+            return;
+        }
+
+        if (IsCapturing)
+            StopCapture();
+
+        // RunScan names its output "{facadeName}_analysis.tif" from
+        // SanitizeForFolderName($"{SelectedBuilding}_{MeasurementLocation}") at capture time -- this
+        // folder's own name is exactly that same string with StartCapture's "_yyyyMMdd_HHmmss"
+        // suffix appended, so stripping that suffix back off recovers the original facadeName
+        // regardless of whatever's currently selected in the 동/측정 장소 combo boxes.
+        string folderBase = Path.GetFileName(dir);
+        var m = System.Text.RegularExpressions.Regex.Match(folderBase, @"^(?<facade>.+)_\d{8}_\d{6}$");
+        string recoveredFacadeName = m.Success ? m.Groups["facade"].Value : folderBase;
+
+        ScanResultImage = null;
+        HasScanResult = false;
+        ScanLogText = "";
+        _scanLogLines.Clear();
+        ScanElapsedText = "";
+        SelectedFrameImage = null;
+        IsShowingSelectedFrame = false;
+        CapturedFrames.Clear();
+
+        lock (_captureLock)
+        {
+            _captureDir = dir;
+            _capturedFrameCount = files.Length;
+        }
+        CaptureFolderText = dir;
+        CapturedFrameCountDisplay = files.Length;
+        _loadedFacadeNameOverride = recoveredFacadeName;
+        StatusMessage = $"불러오는 중... 0/{files.Length}장 — {dir}";
+
+        // Decode+resize off the UI thread (998 JPEGs synchronously here was enough to make the
+        // window look unresponsive/like nothing had happened -- same class of issue as the scan-log
+        // O(n^2) freeze). Each thumbnail is frozen on this background thread before being handed to
+        // the UI thread to add, same pattern OnDecodedFrameReceived already uses for live capture,
+        // and added one at a time so the sidebar visibly fills in rather than staying empty until
+        // everything is ready (2026-09-28).
+        const int ThumbnailSizePx = 120;
+        int loaded = 0;
+        await Task.Run(() =>
+        {
+            foreach (string path in files)
+            {
+                using var mat = Cv2.ImRead(path, ImreadModes.Color);
+                if (mat.Empty())
+                    continue;
+                using var thumbMat = new Mat();
+                Cv2.Resize(mat, thumbMat, new OpenCvSharp.Size(ThumbnailSizePx, ThumbnailSizePx));
+                BitmapSource thumbnail = thumbMat.ToBitmapSource();
+                thumbnail.Freeze();
+                int doneSoFar = Interlocked.Increment(ref loaded);
+                Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    CapturedFrames.Add(new CapturedFrameItem(path) { ThumbnailSource = thumbnail });
+                    HasCapturedFrames = true;
+                    StatusMessage = $"불러오는 중... {doneSoFar}/{files.Length}장 — {dir}";
+                });
+            }
+        });
+        StatusMessage = $"불러옴 — {dir} ({CapturedFrames.Count}장, facade_id={recoveredFacadeName})";
     }
 
     // "스캔시작(스티칭->ColMap) 한번에 실행" -- runs previewer/tools/stitch_engine/stitch_folder.py
@@ -421,7 +551,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StopCapture();
 
         IsScanning = true;
+        IsShowingSelectedFrame = false;
         ScanLogText = "";
+        _scanLogLines.Clear();
+        ScanElapsedText = "";
         ScanProgressPercent = 0;
         ScanStageText = "시작 중...";
         StatusMessage = "스캔 시작 — 스티칭 + CM 파이프라인 실행 중...";
@@ -432,7 +565,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string scriptPath = Path.Combine(engineDir, "stitch_folder.py");
         // StartCapture의 폴더명 조합(동+방향)과 반드시 동일해야 stitch_folder.py의
         // <facade_name>_analysis.tif 등 출력 파일명이 실제 캡처 폴더명과 일치한다.
-        string facadeName = SanitizeForFolderName($"{SelectedBuilding}_{MeasurementLocation}");
+        // LoadExistingCaptureFolder로 불러온 경우 동/측정 장소 드롭다운이 그 폴더를 만들 때 값과
+        // 다를 수 있으므로, 폴더명 자체에서 복원한 값을 우선 사용.
+        string facadeName = _loadedFacadeNameOverride ?? SanitizeForFolderName($"{SelectedBuilding}_{MeasurementLocation}");
 
         if (!File.Exists(scriptPath))
         {
@@ -440,6 +575,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             IsScanning = false;
             return;
         }
+
+        StartScanElapsedTimer();
 
         var psi = new ProcessStartInfo
         {
@@ -462,31 +599,42 @@ public partial class MainViewModel : ObservableObject, IDisposable
             proc.OutputDataReceived += (_, e) => AppendScanLog(e.Data);
             proc.ErrorDataReceived += (_, e) => AppendScanLog(e.Data);
             proc.Start();
+            // Tracked so Dispose() (see MainWindow.xaml.cs's OnClosing) can kill this if the window
+            // closes mid-scan -- otherwise `using var proc` above only releases the .NET wrapper
+            // when this method's scope unwinds normally, it does NOT kill the OS process, and
+            // closing the app while `await WaitForExitAsync()` below is still pending tears down
+            // this whole method without ever reaching that unwind. The orphaned python.exe (COLMAP)
+            // then keeps running (and keeps a lock on the capture folder's output/ subfolder,
+            // blocking deletion in Explorer) with nothing left to report back to -- found 2026-09-28
+            // when the user tried to delete a capture folder right after closing the app mid-scan.
+            _scanProcess = proc;
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
             await proc.WaitForExitAsync();
+            StopScanElapsedTimer();
+            string elapsed = ScanElapsedText;
 
             if (proc.ExitCode == 0)
             {
                 ScanProgressPercent = 100;
                 ScanStageText = "완료";
                 string outputDir = Path.Combine(dir, "output");
-                string analysisPath = Path.Combine(outputDir, $"{facadeName}_analysis.tif");
+                string analysisPath = Path.Combine(outputDir, $"{facadeName}_analysis_colmap.tif");
                 if (LoadScanResultImage(analysisPath, out string? loadError))
                 {
                     HasScanResult = true;
-                    StatusMessage = $"스캔 완료 — {analysisPath}";
+                    StatusMessage = $"스캔 완료 ({elapsed}) — {analysisPath}";
                 }
                 else
                 {
-                    StatusMessage = $"스캔 완료 — {outputDir} (결과 이미지 표시 실패: {loadError})";
+                    StatusMessage = $"스캔 완료 ({elapsed}) — {outputDir} (결과 이미지 표시 실패: {loadError})";
                 }
                 LoadUnmatchedImages(outputDir, facadeName, dir);
             }
             else
             {
                 ScanStageText = $"실패 (exit code {proc.ExitCode})";
-                StatusMessage = $"스캔 실패 (exit code {proc.ExitCode}) — 로그 확인";
+                StatusMessage = $"스캔 실패 (exit code {proc.ExitCode}, {elapsed}) — 로그 확인";
             }
         }
         catch (Exception ex)
@@ -496,9 +644,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            StopScanElapsedTimer();
             IsScanning = false;
+            _scanProcess = null;
         }
     }
+
+    private void StartScanElapsedTimer()
+    {
+        _scanStopwatch.Restart();
+        ScanElapsedText = FormatElapsed(TimeSpan.Zero);
+        _scanElapsedTimer ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _scanElapsedTimer.Tick -= OnScanElapsedTick;
+        _scanElapsedTimer.Tick += OnScanElapsedTick;
+        _scanElapsedTimer.Start();
+    }
+
+    // Idempotent: RunScan calls it right after the process exits and again in finally.
+    private void StopScanElapsedTimer()
+    {
+        if (!_scanStopwatch.IsRunning)
+            return;
+        _scanStopwatch.Stop();
+        _scanElapsedTimer?.Stop();
+        ScanElapsedText = FormatElapsed(_scanStopwatch.Elapsed);
+    }
+
+    private void OnScanElapsedTick(object? sender, EventArgs e) =>
+        ScanElapsedText = FormatElapsed(_scanStopwatch.Elapsed);
+
+    private static string FormatElapsed(TimeSpan t) =>
+        t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
 
     // Loads the stitched analysis mosaic (.tif, potentially very large) via OpenCvSharp rather
     // than WPF's own BitmapImage -- this codebase already standardized on
@@ -653,12 +829,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
             item.IsSelected = next;
     }
 
+    // Bounded to the last MaxScanLogLines lines -- a COLMAP run over ~1000 frames emits several
+    // thousand lines total, and the old `ScanLogText += line + "\n"` reallocated and copied the
+    // *entire* accumulated string on every single line (classic O(n^2) growth). That queued up
+    // Dispatcher.BeginInvoke callbacks faster than the UI thread could drain them as the log grew,
+    // which is what looked like the whole app locking up partway through a scan (2026-09-28).
+    private readonly Queue<string> _scanLogLines = new();
+    // Set only while RunScan's subprocess is actually running -- see its own comment on why
+    // Dispose() needs this to avoid orphaning the stitch_folder.py/COLMAP child on window close.
+    private Process? _scanProcess;
+    private const int MaxScanLogLines = 1000;
+
     private void AppendScanLog(string? line)
     {
         if (line == null)
             return;
         TryUpdateScanProgress(line);
-        Application.Current.Dispatcher.BeginInvoke(() => ScanLogText += line + "\n");
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            _scanLogLines.Enqueue(line);
+            while (_scanLogLines.Count > MaxScanLogLines)
+                _scanLogLines.Dequeue();
+            ScanLogText = string.Join("\n", _scanLogLines) + "\n";
+        });
     }
 
     // stitch_folder.py (previewer/tools/stitch_engine) emits one JSON object per log line
@@ -748,9 +941,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _captureDir = null;
             _capturedFrameCount = 0;
         }
+        _loadedFacadeNameOverride = null;
         CapturedFrameCountDisplay = 0;
         CaptureFolderText = "";
         ScanLogText = "";
+        _scanLogLines.Clear();
+        ScanElapsedText = "";
         ScanResultImage = null;
         HasScanResult = false;
         CapturedFrames.Clear();
@@ -823,6 +1019,90 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var item = new CapturedFrameItem(path) { ThumbnailSource = thumbnail };
             CapturedFrames.Add(item);
             HasCapturedFrames = true;
+        });
+
+        MaybeTriggerIncrementalExtraction(dir, index);
+    }
+
+    // Fires roughly every IncrementalExtractionFrameInterval captured frames so
+    // pycolmap.extract_features runs periodically DURING capture instead of all being deferred to
+    // RunScan -- see colmap_runner.py's 2026-09-28 "reuse an already-populated database.db"
+    // comment for the full design (user request: 2fps was producing "너무 많아서" too many frames
+    // for RunScan to churn through in one go at the end). Guarded by Interlocked so an overlapping
+    // trigger (a slow prior call still running when the next multiple lands) just skips instead of
+    // running two pycolmap.extract_features calls against the same database.db concurrently --
+    // SQLite is single-writer, and that's the exact "database is locked" class of bug already hit
+    // once today.
+    private const int IncrementalExtractionFrameInterval = 10;
+    private int _incrementalExtractionInFlight; // 0/1, guarded via Interlocked, not a bool (see above)
+
+    private void MaybeTriggerIncrementalExtraction(string capturedDir, int frameIndexJustSaved)
+    {
+        if (frameIndexJustSaved == 0 || (frameIndexJustSaved + 1) % IncrementalExtractionFrameInterval != 0)
+            return;
+        RunIncrementalExtraction(capturedDir);
+    }
+
+    // Also called from StopCapture (see there) to mop up whatever tail of frames landed since the
+    // last periodic trigger, so "분석 시작" clicked right after stopping still gets the full
+    // benefit instead of missing the last <IncrementalExtractionFrameInterval frames.
+    private void RunIncrementalExtraction(string capturedDir)
+    {
+        if (Interlocked.CompareExchange(ref _incrementalExtractionInFlight, 1, 0) != 0)
+            return; // a previous call is still running -- the next periodic trigger (or the
+                     // StopCapture catch-up call) will pick up whatever this one missed
+
+        string facadeName = _loadedFacadeNameOverride
+            ?? SanitizeForFolderName($"{SelectedBuilding}_{MeasurementLocation}");
+        string workspaceDir = Path.Combine(capturedDir, "output", $"{facadeName}_colmap");
+        string engineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "stitch_engine");
+        if (!File.Exists(Path.Combine(engineDir, "incremental_extract.py")))
+            engineDir = Path.Combine(AppContext.BaseDirectory, "tools", "stitch_engine"); // published-copy fallback
+        string scriptPath = Path.Combine(engineDir, "incremental_extract.py");
+        if (!File.Exists(scriptPath))
+        {
+            Interlocked.Exchange(ref _incrementalExtractionInFlight, 0);
+            return;
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "python",
+            WorkingDirectory = engineDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add(scriptPath);
+        psi.ArgumentList.Add(capturedDir);
+        psi.ArgumentList.Add(workspaceDir);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var proc = new Process { StartInfo = psi };
+                proc.Start();
+                // Drain both pipes so a slow/verbose run can't deadlock on a full OS pipe buffer,
+                // even though nothing here displays the output -- this is a quiet background
+                // helper the operator never watches directly; RunScan's own pass through the same
+                // pycolmap call is what surfaces progress in the visible scan log.
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                await proc.WaitForExitAsync();
+                await Task.WhenAll(stdoutTask, stderrTask);
+            }
+            catch
+            {
+                // Best-effort only -- RunScan's own extraction call is the fallback of record if
+                // this failed for any reason (missing pycolmap, disk issue, etc.), so a failure
+                // here must never surface as a capture-time error to the operator.
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _incrementalExtractionInFlight, 0);
+            }
         });
     }
 
@@ -902,5 +1182,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dds.VideoPacketReceived -= OnVideoPacketReceived;
         _dds.DecodedFrameReceived -= OnDecodedFrameReceived;
         _dds.Dispose();
+
+        // Kill any still-running scan subprocess (python stitch_folder.py / COLMAP) rather than
+        // orphaning it -- see _scanProcess's doc comment.
+        try
+        {
+            if (_scanProcess is { HasExited: false } proc)
+                proc.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException) { /* already exited between the check and Kill() */ }
     }
 }

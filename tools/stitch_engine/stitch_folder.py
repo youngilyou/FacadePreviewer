@@ -58,13 +58,11 @@ def main() -> None:
         output_dir=output_dir,
     )
     if out is None:
-        print("failed: no image pair passed the geometry quality gate")
+        print("failed: no mosaic was produced -- see the log above for the reason")
         sys.exit(1)
 
     print(f"done: {out}")
-    print(f"  - {facade_name}_analysis.tif")
-    print(f"  - {facade_name}_observed_mask.tif")
-    print(f"  - {facade_name}_quality_report.json (check coverage_ratio / needs_colmap_fallback)")
+    print(f"  - {facade_name}_analysis_colmap.tif")
 
 
 if __name__ == "__main__":

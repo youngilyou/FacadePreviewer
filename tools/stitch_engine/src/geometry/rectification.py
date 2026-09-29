@@ -1,11 +1,11 @@
 """Facade-plane rectification from calibrated camera poses.
 
-Ported from the main CheckCrack repo's src/geometry/rectification.py
-(CLAUDE.local.md #13), trimmed to exactly what previewer needs: previewer is
-Phase1-only (CLAUDE.local.md #3.1, one image folder = one facade, no
-building footprint), so only the footprint-free `facade_plane_from_reconstruction`
-path is ported -- `facade_plane_from_segment` (needs a real footprint
-FacadeSegment) is out of scope here, see stitch_engine/README.md.
+Scoped to exactly what previewer needs: previewer is Phase1-only
+(CLAUDE.local.md #3.1, one image folder = one facade, no building
+footprint), so this module only covers the footprint-free
+`facade_plane_from_reconstruction` path -- a segment-based fit (needing a
+real footprint FacadeSegment) is out of scope here, see
+stitch_engine/README.md.
 
 The pairwise-homography chain (stitching/graph.py + warp.py) has no way to
 enforce *global* consistency -- each pair only agrees locally, so alignment
@@ -75,6 +75,44 @@ def _camera_center(img: "pycolmap.Image") -> np.ndarray:
     return R.T @ (-t)
 
 
+def _estimate_world_up(reconstruction: "pycolmap.Reconstruction") -> np.ndarray:
+    """Gravity-up estimate that works even when the reconstruction was never
+    passed through align_reconstruction_to_utm (no GPS on any image --
+    previewer's own captures never have EXIF GPS, see 2026-09-28
+    CLAUDE.local.md). Before this, both callers below used a hardcoded
+    world_up=[0,0,1], which is only physically meaningful *after* UTM
+    alignment; on a raw/unaligned COLMAP reconstruction, [0,0,1] is just
+    whatever axis the mapper's arbitrary seed-pair happened to pick, so the
+    rendered facade came out tilted at some random angle (confirmed by the
+    user against a properly-aligned reference render, CLAUDE.local.md).
+
+    Drones fly with a gimbal that keeps roughly level roll/pitch relative to
+    true gravity throughout a facade pass -- so each registered camera's own
+    "up" direction (COLMAP/standard camera convention: X=right, Y=down,
+    Z=forward, so camera-local up = -Y), transformed into world coordinates
+    via that image's own rotation, is a per-frame gravity estimate that needs
+    no GPS at all. Averaging across every registered image cancels out each
+    frame's small individual gimbal jitter and leaves a single robust
+    world-up vector -- valid whether or not the reconstruction is UTM-aligned
+    (post-alignment this converges to very nearly [0,0,1] anyway, since it's
+    the same physical gravity direction, just consistently rotated).
+    """
+    ups = []
+    for img in reconstruction.images.values():
+        R = img.cam_from_world().rotation.matrix()
+        ups.append(R.T @ np.array([0.0, -1.0, 0.0]))
+    if not ups:
+        return np.array([0.0, 0.0, 1.0])
+    up = np.sum(np.array(ups), axis=0)
+    norm = np.linalg.norm(up)
+    if norm < 1e-6:
+        # per-frame ups cancelled out (e.g. a flight that rolled through
+        # every orientation) -- no reliable estimate, fall back to the old
+        # assumption rather than dividing by ~0.
+        return np.array([0.0, 0.0, 1.0])
+    return up / norm
+
+
 def _principal_direction(points_3d: np.ndarray) -> np.ndarray:
     """Largest-variance direction through a point set (e.g. a flight's
     camera centers) via SVD -- the "track" facade_plane_from_reconstruction
@@ -82,6 +120,94 @@ def _principal_direction(points_3d: np.ndarray) -> np.ndarray:
     centered = points_3d - points_3d.mean(axis=0)
     _, _, vt = np.linalg.svd(centered)
     return vt[0]
+
+
+def _robust_range(values: np.ndarray, k: float = 3.0) -> tuple[float, float]:
+    """IQR-based (min, max): excludes values more than `k` interquartile-ranges
+    past the nearest quartile before taking the extreme values, so a handful of
+    badly-triangulated COLMAP points (a mismatched feature triangulated far off
+    the real surface) can't blow up the fitted canvas size the way a plain
+    .min()/.max() would -- see facade_plane_from_reconstruction for the real
+    run that motivated this (a fixed-distance RANSAC threshold was rejecting
+    real wall content on a non-flat building; a distribution-based cutoff
+    adapts to whatever this particular point cloud's own spread actually is).
+    k=3.0 is the standard "extreme outlier" boxplot threshold (vs 1.5 for a
+    plain "outlier") -- deliberately conservative, since clipping real facade
+    content is worse than leaving a few meters of genuine margin."""
+    q1, q3 = np.percentile(values, [25, 75])
+    iqr = q3 - q1
+    if iqr <= 1e-9:
+        return float(values.min()), float(values.max())
+    lo, hi = q1 - k * iqr, q3 + k * iqr
+    inliers = values[(values >= lo) & (values <= hi)]
+    if inliers.size == 0:
+        return float(values.min()), float(values.max())
+    return float(inliers.min()), float(inliers.max())
+
+
+_MAX_CANVAS_PIXELS = 400_000_000  # 200m x 200m at 100 px/m -- see rectify_images
+_WALL_BAND_SPREAD_LIMIT_M = 5.0  # p10-p90 spread along the normal above which the wall isn't the dominant cluster
+_WALL_SLAB_THICKNESS_M = 3.0  # thickness of the densest slab used to re-seed the wall
+_WALL_SLAB_MIN_FRACTION = 0.25  # the seed slab must hold at least this share of all points
+_WALL_BAND_HALF_WIDTH_M = 1.5  # half-width of the band kept around the re-seeded wall plane
+
+
+def _filter_points_near_plane(
+    points: np.ndarray, centroid: np.ndarray, normal: np.ndarray, k: float = 3.0, max_iters: int = 3
+) -> tuple[np.ndarray, np.ndarray]:
+    """Drop points whose distance from the fitted plane (along `normal`) puts
+    them nowhere near the actual photographed surface, re-estimating the
+    centroid from the survivors each pass. An outdoor capture's oblique shots
+    also see sky/distant terrain in the background, and COLMAP incidentally
+    triangulates some of that too -- at a wildly different depth than the real
+    facade standoff, so an iterative IQR trim ON THE DISTANCE-TO-PLANE axis
+    (not the final u/v canvas axes -- those can still be dominated by a large,
+    widely-spread background cluster even after this) separates the two
+    clusters directly, since depth-from-plane is exactly the dimension they
+    differ in by orders of magnitude.
+
+    Fallback for when the wall ISN'T the dominant depth cluster (e.g. a flight
+    that stayed close to the wall the whole time, so background points
+    outnumber real wall points): if the surviving set is still spread over
+    several metres along the normal, re-seed from whichever thin slab along
+    the normal holds the densest cluster of points (the real wall, on the
+    assumption that a wall's own points concentrate far more tightly along
+    its own normal than any scattered background does) and keep only points
+    within a band of that slab. A well-separated capture never needs this
+    fallback, so its result is unaffected."""
+    subset = points
+    centroid_est = centroid
+    for _ in range(max_iters):
+        dist = (points - centroid_est) @ normal
+        lo, hi = _robust_range(dist, k=k)
+        inliers = points[(dist >= lo) & (dist <= hi)]
+        if inliers.shape[0] == subset.shape[0] or inliers.shape[0] < 10:
+            break
+        subset = inliers
+        centroid_est = subset.mean(axis=0)
+
+    spread = np.percentile((subset - centroid_est) @ normal, 90) - np.percentile((subset - centroid_est) @ normal, 10)
+    if spread <= _WALL_BAND_SPREAD_LIMIT_M:
+        return subset, centroid_est
+
+    d_all = (points - centroid_est) @ normal
+    order = np.sort(d_all)
+    slab_counts = np.searchsorted(order, order + _WALL_SLAB_THICKNESS_M) - np.arange(len(order))
+    densest = int(np.argmax(slab_counts))
+    if slab_counts[densest] < _WALL_SLAB_MIN_FRACTION * len(points):
+        return subset, centroid_est  # no clearly dominant slab either -- keep the IQR-trimmed result as-is
+
+    reseeded_centroid = points[(d_all >= order[densest]) & (d_all <= order[densest] + _WALL_SLAB_THICKNESS_M)].mean(axis=0)
+    for _ in range(max_iters):
+        band_mask = np.abs((points - reseeded_centroid) @ normal) <= _WALL_BAND_HALF_WIDTH_M
+        if band_mask.sum() < 10:
+            break
+        updated_centroid = points[band_mask].mean(axis=0)
+        if np.allclose(updated_centroid, reseeded_centroid):
+            break
+        reseeded_centroid = updated_centroid
+    band_mask = np.abs((points - reseeded_centroid) @ normal) <= _WALL_BAND_HALF_WIDTH_M
+    return points[band_mask], reseeded_centroid
 
 
 def _near_camera_track_mask(
@@ -217,114 +343,186 @@ def facade_plane_from_reconstruction(
     the track is a far more natural "horizontal" than an axis derived purely
     from the (capture-direction-agnostic) point cloud shape.
 
-    Outlier rejection (two stages, see each helper's docstring): first
-    _near_camera_track_mask drops points nowhere near where the drone
-    actually flew, then _ransac_plane_inlier_mask fits a plane to what's left
-    and drops whatever still doesn't lie on it. Before this function's own
-    centroid/SVD/bounding-box math ever ran, a few badly triangulated points
-    (or, with RANSAC alone and no camera-distance stage, an entire coherent
-    background structure like a mountainside) could balloon the fitted
-    facade to ~1km and crash rectify_images with an out-of-memory error.
+    Outlier rejection (2026-09-29): `_filter_points_near_plane`, an iterative
+    distance-along-normal IQR trim -- previewer's own earlier approach here
+    (`_near_camera_track_mask` + `_ransac_plane_inlier_mask`, a fixed 5m
+    RANSAC-plane-distance threshold) is still used by `fit_corner_planes`
+    below, but turned out wrong for THIS function's job specifically:
+    confirmed on a real 68-image facade (this project's own BACK capture)
+    that the fixed 5m threshold rejects real, correctly-photographed wall
+    content at the outer sections of a curved/staggered panel building (each
+    entrance slightly rotated from its neighbors -- common on these
+    Soviet-era apartment blocks) just because it's more than 5m off the
+    single plane the CENTER section fit best, silently halving the rendered
+    canvas width (31m of a true ~61m building -- exactly the "반만 나와요"
+    bug the user reported) with no error or warning of any kind. A
+    distribution-based (IQR) cutoff instead adapts to this particular point
+    cloud's own actual spread rather than assuming a fixed physical
+    distance, so it doesn't need to guess the right number in advance:
+    confirmed against a known-good reference render for this exact 68-image
+    set (canvas 61.19m x 41.96m) -- this approach reproduces that width
+    almost exactly, where the old fixed-threshold approach could not
+    (confirmed testing 5m through 20m: none reached even 44m).
     """
     points_all = np.array([p.xyz for p in reconstruction.points3D.values()])
     if points_all.shape[0] < 10:
         raise ValueError(f"too few triangulated points ({points_all.shape[0]}) to fit a facade plane")
 
     centers = np.array([_camera_center(img) for img in reconstruction.images.values()])
+    world_up = _estimate_world_up(reconstruction)
 
-    # Two-stage outlier rejection -- order matters. Camera-distance first
-    # (cheap, and grounded in where the drone actually flew, so it can't be
-    # outvoted by a big coherent background structure), THEN plane-coherence
-    # RANSAC on what's left (catches remaining noise/mismatches that are
-    # merely near the drone but still not on the wall). See both helpers'
-    # docstrings for why running RANSAC alone, first, was not enough.
-    if centers.shape[0] >= 1:
-        near_mask = _near_camera_track_mask(points_all, centers)
-        points_near = points_all[near_mask]
-    else:
-        points_near = points_all
-    if points_near.shape[0] < 10:
-        points_near = points_all
-
-    inlier_mask = _ransac_plane_inlier_mask(points_near)
-    points = points_near[inlier_mask]
+    raw_centroid = points_all.mean(axis=0)
+    _, _, vt0 = np.linalg.svd(points_all - raw_centroid, full_matrices=False)
+    raw_normal = vt0[2]
+    # 2026-09-29: with LoFTR matching the ground in front of the building gets triangulated
+    # densely too, and on the 429-image BACK facade the all-points SVD normal came out as world-up
+    # (the ground plane) -- a 228m x 310m canvas of smeared ground instead of the wall. The
+    # cameras' own viewing direction doesn't have that problem: when enough of them look sideways
+    # rather than straight down, the wall normal is their mean viewing direction reversed,
+    # flattened to horizontal.
+    wall_normal = _wall_normal_from_cameras(reconstruction, world_up)
+    if wall_normal is not None:
+        raw_normal = wall_normal
+    points, _ = _filter_points_near_plane(points_all, raw_centroid, raw_normal)
     if points.shape[0] < 10:
-        # RANSAC couldn't find a coherent plane at all (degenerate scene) --
-        # fall back to the camera-distance-filtered set rather than raising,
-        # matching this function's original (pre-outlier-rejection) behavior.
-        points = points_near
+        points = points_all
 
-    return fit_plane_from_points(points, centers, px_per_m=px_per_m, padding_m=padding_m)
+    return fit_plane_from_points(
+        points, centers, px_per_m=px_per_m, padding_m=padding_m, world_up=world_up, normal=wall_normal,
+    )
+
+
+def _wall_normal_from_cameras(
+    reconstruction: pycolmap.Reconstruction,
+    world_up: np.ndarray,
+    min_oblique: int = 4,
+) -> np.ndarray | None:
+    """Horizontal wall normal (pointing from the wall toward the cameras) from the registered
+    cameras' viewing directions, or None when fewer than `min_oblique` cameras look more than 45
+    degrees away from straight down (a roof/nadir capture has no wall to face)."""
+    forwards = []
+    for img in reconstruction.images.values():
+        R = img.cam_from_world().rotation.matrix()
+        forwards.append(R.T @ np.array([0.0, 0.0, 1.0]))  # camera +Z (optical axis) in world
+    forwards = np.array(forwards)
+    oblique = forwards @ world_up > -np.cos(np.deg2rad(45.0))
+    if int(oblique.sum()) < min_oblique:
+        return None
+    normal = -forwards[oblique].mean(axis=0)
+    normal = normal - np.dot(normal, world_up) * world_up
+    norm = np.linalg.norm(normal)
+    if norm < 1e-6:
+        return None
+    return normal / norm
 
 
 def fit_plane_from_points(
-    points: np.ndarray, camera_centers: np.ndarray, px_per_m: float = 100.0, padding_m: float = 2.0,
+    points: np.ndarray,
+    camera_centers: np.ndarray,
+    px_per_m: float = 100.0,
+    padding_m: float = 2.0,
+    world_up: np.ndarray | None = None,
+    normal: np.ndarray | None = None,
 ) -> FacadePlane:
-    """Core SVD plane-fit + orientation logic shared by
+    """`normal`, if given, is used instead of the SVD normal of `points`
+    (facade_plane_from_reconstruction passes the camera-derived wall normal).
+
+    Core SVD plane-fit + orientation logic shared by
     `facade_plane_from_reconstruction` (the front wall, `points` already
-    outlier-rejected by its two RANSAC stages) and `fit_corner_planes` (a
-    building-corner side/gable wall, `points` are the OUTLIER points from the
-    front-plane fit -- see that function's docstring). `points`/
+    outlier-rejected by `_filter_points_near_plane`) and `fit_corner_planes`
+    (a building-corner side/gable wall, `points` are the OUTLIER points from
+    the front-plane fit -- see that function's docstring, which still uses
+    the older `_near_camera_track_mask`/`_ransac_plane_inlier_mask` pair --
+    a small, already-curated corner point set isn't affected by the
+    curved-facade failure mode that motivated switching the front wall's own
+    filtering, see facade_plane_from_reconstruction). `points`/
     `camera_centers` are assumed already curated by the caller; this function
     only does the geometry (SVD normal, track-aligned+sign-fixed e_u,
-    world-anchored e_v, canvas extent) -- see facade_plane_from_reconstruction
-    for what each step means and why.
+    world-anchored e_v, canvas extent via `_robust_range`) -- see
+    facade_plane_from_reconstruction for what each step means and why.
+    `world_up`: gravity-up estimate (see _estimate_world_up) -- defaults to
+    the old fixed [0,0,1] (only valid on a UTM-aligned reconstruction) if the
+    caller doesn't have one.
     """
+    if world_up is None:
+        world_up = np.array([0.0, 0.0, 1.0])
     centroid = points.mean(axis=0)
     # full_matrices=False: this is an (N,3) matrix, and only the (3,3) Vt is ever used (U is
     # discarded) -- the default full_matrices=True still tries to materialize an (N,N) U, which
     # for N in the hundred-thousands is a real crash (observed: 100,048 points -> an attempted
     # 74.6GB allocation for a U this code never even reads).
     _, _, vt = np.linalg.svd(points - centroid, full_matrices=False)
-    normal = vt[2]
+    normal = vt[2] if normal is None else np.asarray(normal, dtype=np.float64)
 
-    track = _principal_direction(camera_centers) if camera_centers.shape[0] >= 2 else vt[0]
-    e_u = track - np.dot(track, normal) * normal
-    if np.linalg.norm(e_u) < 1e-6:
-        e_u = vt[0] - np.dot(vt[0], normal) * normal
+    is_vertical_wall = abs(float(np.dot(normal, world_up))) < 0.5
+
+    if is_vertical_wall:
+        # e_u forced geometrically perpendicular to true world-up (within
+        # the plane), instead of trusted from the flight-track PCA below.
+        # 2026-09-28: the track-PCA axis turned out to still render facades
+        # tilted even with a correct world_up estimate (_estimate_world_up)
+        # feeding e_v -- on a small/fragmented registered subset (e.g. 28 of
+        # 297 requested images, most dropped by COLMAP's own registration
+        # failures) the camera centers' own principal direction isn't a
+        # clean horizontal line, so e_u came out tilted regardless of how
+        # accurate "up" was, and normal/e_u/e_v are mutually perpendicular
+        # by construction so that tilt in e_u alone was enough to skew the
+        # whole rendered grid. Deriving e_u directly from cross(world_up,
+        # normal) instead guarantees it is exactly horizontal, independent
+        # of any noise or partial coverage in the actual flight path.
+        e_u = np.cross(world_up, normal)
+        if np.linalg.norm(e_u) < 1e-6:
+            is_vertical_wall = False  # normal ~= world_up: degenerate, fall through below
+
+    if not is_vertical_wall:
+        # rooftop/plan-view (or the above degenerate fallback) -- no natural
+        # "up" to anchor e_u to, so it comes from the flight track's own PCA
+        # instead (see this function's docstring for why the track is a
+        # cleaner "horizontal" than the point cloud's own PCA in this case).
+        track = _principal_direction(camera_centers) if camera_centers.shape[0] >= 2 else vt[0]
+        e_u = track - np.dot(track, normal) * normal
+        if np.linalg.norm(e_u) < 1e-6:
+            e_u = vt[0] - np.dot(vt[0], normal) * normal
     e_u = e_u / np.linalg.norm(e_u)
 
-    # e_u's AXIS comes from the flight track's own SVD above, which is exactly
-    # what we want (the track is a cleaner "horizontal" than the point
-    # cloud's own PCA -- see this function's docstring) -- but SVD never
-    # fixes which of the two opposite directions along that axis is "positive"
-    # (2026-09-09 CLAUDE.local.md entry: a real run rendered every source
-    # photo left-right mirrored -- confirmed by the user against the drone's
-    # own front-facing reference view -- with the mirror direction being
-    # whatever np.linalg.svd's internal sign convention happened to produce
-    # for that day's point cloud, not a fixed always-flipped bug). Fix the
-    # SIGN (not the axis) against an unambiguous physical reference instead:
-    # the camera centers sit on the *outward* (viewer) side of the wall by
-    # construction, so centroid -> mean-camera-position is a reliable
-    # "outward" direction with no SVD sign ambiguity at all. A viewer facing
-    # the wall (looking the opposite way, "into" it) with true world-up
-    # should see canvas +u as their own right hand -- forward x up, the
-    # standard right-handed camera convention.
+    # SVD/cross-product never fix which of the two opposite directions along
+    # e_u's axis is "positive" (2026-09-09 CLAUDE.local.md entry: a real run
+    # rendered every source photo left-right mirrored -- confirmed by the
+    # user against the drone's own front-facing reference view -- with the
+    # mirror direction being whatever np.linalg.svd's internal sign
+    # convention happened to produce for that day's point cloud, not a fixed
+    # always-flipped bug). Fix the SIGN (not the axis) against an
+    # unambiguous physical reference instead: the camera centers sit on the
+    # *outward* (viewer) side of the wall by construction, so centroid ->
+    # mean-camera-position is a reliable "outward" direction with no sign
+    # ambiguity at all. A viewer facing the wall (looking the opposite way,
+    # "into" it) with true world-up should see canvas +u as their own right
+    # hand -- forward x up, the standard right-handed camera convention.
     if camera_centers.shape[0] >= 1:
         outward = camera_centers.mean(axis=0) - centroid
         forward = -outward
-        world_up_ref = np.array([0.0, 0.0, 1.0])
-        right_ref = np.cross(forward, world_up_ref)
+        right_ref = np.cross(forward, world_up)
         right_ref_norm = np.linalg.norm(right_ref)
         if right_ref_norm > 1e-6 and np.dot(e_u, right_ref / right_ref_norm) < 0.0:
             e_u = -e_u
 
-    world_up = np.array([0.0, 0.0, 1.0])
-    if abs(float(np.dot(normal, world_up))) < 0.5:
-        # vertical wall -- v is true world-up, so "up" always renders up
-        # regardless of which way the flight track happened to point.
-        e_v = np.array([0.0, 0.0, -1.0])
+    if is_vertical_wall:
+        # v is true world-up, so "up" always renders up regardless of which
+        # way the flight track happened to point.
+        e_v = -world_up
     else:
-        # rooftop/plan-view -- no natural "up" to anchor to, so v is
-        # whatever stays perpendicular to the track-aligned u within the plane.
+        # no natural "up" to anchor to, so v is whatever stays perpendicular
+        # to the track-aligned u within the plane.
         e_v = np.cross(normal, e_u)
         e_v = e_v / np.linalg.norm(e_v)
 
     u = (points - centroid) @ e_u
     v = (points - centroid) @ e_v
-    width_m = float(u.max() - u.min()) + 2 * padding_m
-    height_m = float(v.max() - v.min()) + 2 * padding_m
-    origin = centroid + e_u * (float(u.min()) - padding_m) + e_v * (float(v.min()) - padding_m)
+    u_min, u_max = _robust_range(u)
+    v_min, v_max = _robust_range(v)
+    width_m = (u_max - u_min) + 2 * padding_m
+    height_m = (v_max - v_min) + 2 * padding_m
+    origin = centroid + e_u * (u_min - padding_m) + e_v * (v_min - padding_m)
 
     return FacadePlane(origin=origin, e_u=e_u, e_v=e_v, px_per_m=px_per_m, width_m=width_m, height_m=height_m)
 
@@ -491,6 +689,7 @@ def fit_corner_planes(
     fit from a handful of noisy points -- a real second plane needs real
     support, same philosophy as compute_image_valid_x_ranges' own purity bar.
     """
+    world_up = _estimate_world_up(reconstruction)
     by_side: dict[str, list] = {"keep_right": [], "keep_left": []}
     for img in reconstruction.images.values():
         stem = Path(img.name).stem
@@ -539,7 +738,7 @@ def fit_corner_planes(
         if points_final.shape[0] < min_points_per_corner:
             continue
 
-        plane = fit_plane_from_points(points_final, corner_centers_arr)
+        plane = fit_plane_from_points(points_final, corner_centers_arr, world_up=world_up)
         groups[corner_name] = CornerPlaneGroup(
             plane=plane,
             image_names={Path(img.name).stem for img in imgs},
@@ -583,6 +782,78 @@ def align_reconstruction_to_utm(
         return False
     reconstruction.transform(sim3d)
     return True
+
+
+def gps_camera_centers(
+    by_id: dict[str, ImageMetadata], utm_epsg: int, image_ids,
+) -> dict[str, np.ndarray]:
+    """{image_id: GPS position as a UTM+altitude camera center} for the given images that have GPS."""
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
+    centers: dict[str, np.ndarray] = {}
+    for image_id in image_ids:
+        meta = by_id.get(image_id)
+        if meta is None or meta.gps.latitude is None or meta.gps.altitude_m is None:
+            continue
+        x, y = transformer.transform(meta.gps.longitude, meta.gps.latitude)
+        centers[image_id] = np.array([x, y, meta.gps.altitude_m])
+    return centers
+
+
+def fill_uncovered_pixels(
+    image: np.ndarray, observed_mask: np.ndarray, fillers: list[WarpedImage],
+) -> int:
+    """Pastes each filler (in order) into the pixels of `image` that `observed_mask` still marks as
+    not photographed, updating both in place. Returns the number of pixels filled.
+
+    2026-09-29: this app answers "was any part of the wall NOT photographed?", so a photo left out
+    of the main mosaic must never turn a photographed spot into a black gap. On the 216-photo BACK
+    run the bottom-right corner was photographed only by photos COLMAP had misplaced by a few floors
+    (excluded by gps_inconsistent_images), and the mosaic showed a hole there that the capture did
+    not have. Fillers only ever go where nothing else landed, so they can't degrade covered areas."""
+    filled = 0
+    for w in fillers:
+        x, y = w.corner
+        lw, lh = w.size
+        region_obs = observed_mask[y:y + lh, x:x + lw]
+        take = (w.mask[:region_obs.shape[0], :region_obs.shape[1]] > 0) & (region_obs == 0)
+        n = int(take.sum())
+        if n == 0:
+            continue
+        image[y:y + lh, x:x + lw][take] = w.image[:region_obs.shape[0], :region_obs.shape[1]][take]
+        region_obs[take] = 255
+        filled += n
+    return filled
+
+
+def gps_inconsistent_images(
+    reconstruction: pycolmap.Reconstruction,
+    by_id: dict[str, ImageMetadata],
+    utm_epsg: int,
+    min_error_m: float = 3.0,
+    median_multiple: float = 10.0,
+) -> dict[str, float]:
+    """{image_id: error_m} for registered images whose camera position in an already
+    UTM-aligned reconstruction is far from their own GPS position -- threshold is
+    max(`min_error_m`, `median_multiple` x the median error of all images).
+
+    2026-09-29, 429-image BACK facade with LoFTR matching: every image registered and the
+    median camera-vs-GPS error was 0.26m, but a group of rooftop-level photos sat 17-19m too low
+    -- the repetitive floor pattern let COLMAP chain them onto the wall a few floors down, and
+    rectify_images then pasted their sky/roof content into the middle of the facade. Their own
+    GPS disagrees with that placement by far more than the rest of the flight does."""
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
+    errors: dict[str, float] = {}
+    for img in reconstruction.images.values():
+        image_id = Path(img.name).stem
+        meta = by_id.get(image_id)
+        if meta is None or meta.gps.latitude is None or meta.gps.altitude_m is None:
+            continue
+        x, y = transformer.transform(meta.gps.longitude, meta.gps.latitude)
+        errors[image_id] = float(np.linalg.norm(_camera_center(img) - np.array([x, y, meta.gps.altitude_m])))
+    if not errors:
+        return {}
+    threshold = max(min_error_m, median_multiple * float(np.median(list(errors.values()))))
+    return {image_id: e for image_id, e in errors.items() if e > threshold}
 
 
 # 2026-09-10: a visibly wavy/leaning building silhouette was first (wrongly)
@@ -634,8 +905,12 @@ def rectify_images(
     depth_corrections: dict[str, ImageDepthInfo] | None = None,
     depth_deviation_threshold_m: float = 0.15,
     depth_max_deviation_m: float = 3.0,
+    pose_overrides: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
 ) -> tuple[dict[str, WarpedImage], tuple[int, int]]:
-    """Undistort + plane-project every registered image onto one fixed,
+    """`pose_overrides` {image_id: (R, t)} projects that image with this cam_from_world
+    rotation/translation instead of its reconstruction pose (see fill_uncovered_pixels).
+
+    Undistort + plane-project every registered image onto one fixed,
     plane-sized canvas. Each image is warped into its own tight local ROI
     and carries a `corner` offset, not a full canvas-sized buffer -- the same
     memory-bounding trick warp.py's homography-chain path already uses (see
@@ -667,6 +942,15 @@ def rectify_images(
     """
     canvas_w = max(1, int(round(plane.width_m * plane.px_per_m)))
     canvas_h = max(1, int(round(plane.height_m * plane.px_per_m)))
+    # 2026-09-29: a bent COLMAP reconstruction (215-photo BACK run, cameras up to 2km off their GPS)
+    # stretched the fitted plane until a single canvas-sized warp needed 4.5GB and OpenCV died with
+    # an out-of-memory error. No single facade is anywhere near this size, so stop with a readable
+    # error instead.
+    if canvas_w * canvas_h > _MAX_CANVAS_PIXELS:
+        raise ValueError(
+            f"facade canvas {plane.width_m:.0f}m x {plane.height_m:.0f}m is implausibly large -- "
+            "the COLMAP reconstruction is most likely broken"
+        )
     valid_x_ranges = valid_x_ranges or {}
 
     warped: dict[str, WarpedImage] = {}
@@ -697,9 +981,12 @@ def rectify_images(
             raw = cv2.undistort(raw, K, dist_coeffs)
             keep_mask = cv2.undistort(keep_mask, K, dist_coeffs)
 
-        pose = img.cam_from_world()
-        R = pose.rotation.matrix()
-        t = np.asarray(pose.translation)
+        if pose_overrides and image_id in pose_overrides:
+            R, t = pose_overrides[image_id]
+        else:
+            pose = img.cam_from_world()
+            R = pose.rotation.matrix()
+            t = np.asarray(pose.translation)
         H = _camera_to_facade_homography(K, R, t, plane)
 
         h, w = raw.shape[:2]
@@ -753,6 +1040,100 @@ def rectify_images(
         )
 
     return warped, (canvas_w, canvas_h)
+
+
+def render_sparse_point_splat(
+    facade_id: str,
+    reconstruction: pycolmap.Reconstruction,
+    plane: FacadePlane,
+    images_dir: str | Path | None = None,
+    patch_radius_px: int = 6,
+) -> MosaicResult:
+    """Fast coverage-shape preview: projects COLMAP's own triangulated sparse points onto the
+    fitted facade plane and, for each one, pastes a small real-pixel patch sampled from wherever
+    that point was actually observed (its COLMAP track's first (image, point2D) observation --
+    Point2D.xy is the exact pixel it was detected at, no reprojection math needed) instead of a
+    flat single-color dot. No per-image homography warp, no seam-finding/blending, no dense
+    stereo -- this still skips everything rectify_and_blend does except the plane projection
+    itself, which is why it's orders of magnitude cheaper, but small real patches read as
+    recognizable wall texture (window edges, floor lines) in a way flat dots never could
+    (2026-09-28, explicit user call after seeing the flat-dot version: "점에 이미지를 붙이라고").
+
+    `images_dir` is required to get patches (falls back to flat Point3D.color dots, the original
+    2026-09-28 behavior, if not given or a source file can't be read -- e.g. a caller that only
+    has the reconstruction, not the original capture folder, still gets a usable result).
+
+    Deliberately not attempting rectify_and_blend's output quality: this app's stated purpose is
+    an on-site "did I cover the whole wall" check, not final crack-level imagery (see
+    pipeline.yaml's colmap.mode comment, and the main CheckCrack repo's full-res pipeline is where
+    that actually happens) -- a recognizable point-cloud silhouette of the wall satisfies that,
+    not a seamless photographic mosaic.
+
+    Returns the same MosaicResult shape rectify_and_blend does, so
+    _run_colmap_only_pipeline needs no changes beyond which function it calls.
+    coverage_ratio is measured the same way observed_mask always has been (fraction of canvas
+    pixels marked observed), just cheaper to produce: each splatted patch's footprint IS the "was
+    this bit of wall photographed" signal here, in place of rectify_and_blend's per-pixel warped
+    image coverage.
+    """
+    width_px = max(1, int(round(plane.width_m * plane.px_per_m)))
+    height_px = max(1, int(round(plane.height_m * plane.px_per_m)))
+    canvas = np.zeros((height_px, width_px, 3), dtype=np.uint8)
+    mask = np.zeros((height_px, width_px), dtype=np.uint8)
+
+    images_dir = Path(images_dir) if images_dir is not None else None
+    # Every point observed by the same image re-reads that one file -- caching avoids re-decoding
+    # a 297-frame facade's JPEGs thousands of times over (once per point, not once per image).
+    source_image_cache: dict[str, np.ndarray | None] = {}
+
+    def _load_source(name: str) -> np.ndarray | None:
+        if name not in source_image_cache:
+            source_image_cache[name] = imread_unicode(str(images_dir / name)) if images_dir is not None else None
+        return source_image_cache[name]
+
+    ps = patch_radius_px
+    for p in reconstruction.points3D.values():
+        rel = p.xyz - plane.origin
+        u = float(np.dot(rel, plane.e_u))
+        v = float(np.dot(rel, plane.e_v))
+        px = int(round(u * plane.px_per_m))
+        py = int(round(v * plane.px_per_m))
+        if not (0 <= px < width_px and 0 <= py < height_px):
+            continue
+
+        patch = None
+        if p.track.elements:
+            elem = p.track.elements[0]
+            if elem.image_id in reconstruction.images:
+                src_image = reconstruction.images[elem.image_id]
+                src = _load_source(src_image.name)
+                if src is not None:
+                    sx, sy = src_image.point2D(elem.point2D_idx).xy
+                    sx, sy = int(round(sx)), int(round(sy))
+                    y0, y1 = max(0, sy - ps), min(src.shape[0], sy + ps + 1)
+                    x0, x1 = max(0, sx - ps), min(src.shape[1], sx + ps + 1)
+                    if y1 > y0 and x1 > x0:
+                        patch = src[y0:y1, x0:x1]
+
+        cy0, cy1 = max(0, py - ps), min(height_px, py + ps + 1)
+        cx0, cx1 = max(0, px - ps), min(width_px, px + ps + 1)
+        if cy1 <= cy0 or cx1 <= cx0:
+            continue
+        if patch is not None:
+            ch, cw = cy1 - cy0, cx1 - cx0
+            canvas[cy0:cy1, cx0:cx1] = cv2.resize(patch, (cw, ch), interpolation=cv2.INTER_AREA)
+        else:
+            color_bgr = (int(p.color[2]), int(p.color[1]), int(p.color[0]))  # RGB -> cv2's BGR
+            canvas[cy0:cy1, cx0:cx1] = color_bgr
+        mask[cy0:cy1, cx0:cx1] = 255
+
+    coverage_ratio = float(mask.mean()) / 255.0 if mask.size else 0.0
+    quality = StitchQualityReport(
+        facade_id=facade_id,
+        image_count=len(reconstruction.images),
+        coverage_ratio=coverage_ratio,
+    )
+    return MosaicResult(analysis_image=canvas, visual_image=canvas, observed_mask=mask, quality=quality)
 
 
 def _run_dense_depth_stage(
@@ -850,11 +1231,23 @@ def rectify_and_blend(
     seam_masks = compute_seam_masks(warped, canvas_size)
     scfg = cfg.stitch
     analysis_image = blend_analysis(warped, seam_masks, canvas_size) if scfg.generate_analysis_mosaic else None
-    visual_image = (
-        blend_visual(warped, seam_masks, canvas_size, num_bands=int(scfg.multiband_num_bands))
-        if scfg.generate_visual_mosaic
-        else None
-    )
+    # 2026-09-28: user's explicit call for the 15-minute field-use budget ("blend 안해도 됨") --
+    # blend_visual is real extra cost beyond blend_analysis (exposure-compensation solves a linear
+    # system over every warped image, then a full cv2.detail_MultiBandBlender Laplacian-pyramid
+    # blend), on top of the seam-finding both share. blend_analysis already IS a correct "no blend"
+    # hard-seam composite (cv2.detail.Blender_NO -- literally the OpenCV no-op blender), so
+    # `fast_paste_only` just reuses that result for visual_image too instead of also paying for
+    # blend_visual's extra passes. Coverage-check use doesn't need the exposure-matched/feathered
+    # look blend_visual exists for.
+    fast_paste_only = bool(scfg.fast_paste_only) if "fast_paste_only" in scfg else False
+    if fast_paste_only:
+        visual_image = analysis_image.copy() if analysis_image is not None else None
+    else:
+        visual_image = (
+            blend_visual(warped, seam_masks, canvas_size, num_bands=int(scfg.multiband_num_bands))
+            if scfg.generate_visual_mosaic
+            else None
+        )
 
     canvas_w, canvas_h = canvas_size
     observed_mask = np.zeros((canvas_h, canvas_w), dtype=np.uint8)

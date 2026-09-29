@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Management;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -11,6 +13,18 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // RunScan's subprocess (python stitch_folder.py / COLMAP) survives the app being
+        // force-closed or crashing mid-scan whenever MainViewModel.Dispose() never got a chance to
+        // run (Dispose() itself now kills it on a normal window close -- see its own doc comment,
+        // added the same day as this). The orphan then sits there holding the capture folder's
+        // output/<facade>_colmap/database.db open, so the *next* "분석 시작" fails immediately with
+        // a PermissionError trying to unlink() that stale db -- reproduced repeatedly on
+        // 2026-09-28 even after Dispose()'s fix, since that only covers this process's own
+        // lifetime, not whatever got orphaned by an earlier crash/kill. Cleaning up any leftover
+        // stitch_folder.py process at the START of every launch closes that gap regardless of how
+        // the previous run ended.
+        KillOrphanStitchProcesses();
 
         // Same fix as CheckCrackViewer's App.xaml.cs: this machine's WPF GPU
         // rendering doesn't relay over the remote session (renders fine
@@ -88,5 +102,42 @@ public partial class App : Application
                 Shutdown();
         };
         main.Show();
+    }
+
+    // Process itself exposes no way to read another process's command line -- WMI's Win32_Process
+    // is the standard way on Windows (same approach as manually diagnosing this via PowerShell's
+    // Get-CimInstance during the 2026-09-28 session that found this bug). Matches on
+    // "stitch_folder.py" specifically (this project's own distinctly-named entry point, see
+    // stitch_folder.py's own header comment) rather than just "python.exe" -- this dev machine
+    // routinely has several unrelated python.exe processes running (VS Code's Jedi language
+    // server, conda multiprocessing workers, etc.) that must never be touched.
+    private static void KillOrphanStitchProcesses()
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = 'python.exe' OR Name = 'python'");
+            foreach (ManagementBaseObject result in searcher.Get())
+            {
+                using var mo = result;
+                string commandLine = mo["CommandLine"] as string ?? "";
+                if (!commandLine.Contains("stitch_folder.py", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                int pid = Convert.ToInt32(mo["ProcessId"]);
+                try
+                {
+                    using var proc = Process.GetProcessById(pid);
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch (ArgumentException) { /* already gone between the query and here */ }
+                catch (InvalidOperationException) { /* already gone between the query and here */ }
+            }
+        }
+        catch (Exception)
+        {
+            // WMI can be unavailable/restricted on some machines -- this cleanup is a best-effort
+            // nicety, not something worth failing app startup over.
+        }
     }
 }

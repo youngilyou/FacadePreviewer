@@ -2068,3 +2068,68 @@ dst 목록에 빠진 게 없는가 → 앱 도메인이 DDS-Router 참가자 도
 - FacadePreviewer: `ImageSensorFrame*` 재생성분, `CMakeLists.txt` 주석, `MainViewModel.cs` 도메인/
   포트 수정. (`tools/stitch_engine/` 변경분은 이번 세션과 무관 — 별도 진행 중이던 작업, 커밋 제외)
 - DDS-Router (`ddsrouterfork`): `crack_inspection_analysis.yaml` 라우트 추가.
+
+## 2026-09-29 세션 — BACK 429장으로 `BACK_analysis_colmap.tif`가 V005처럼 나오게
+
+목표(사용자): `D:\ClaudePr\UE_TemImg\output\V005\BACK_analysis_colmap.tif`처럼 한 면 전체 정사영상이
+나오게. 크랙 검사 안 함, 이 파일 하나만 필요. **CheckCrackV2와 소스 공유 금지** — stitch_engine은
+자체 사본이고 CheckCrackV2를 import/경로 참조하지 않음(이번 수정도 전부 자체 구현).
+
+### 원인 3개 (순서대로 발견)
+1. **COLMAP 매핑 240초 제한** (`colmap_runner.py`, `max_runtime_seconds=240`) — LoFTR 매칭은 8,258쌍
+   전부 성공했는데 매핑이 92/429장에서 잘림. LoFTR 경로는 pycolmap 기본 옵션(제한 없음)으로 1회만
+   → **429/429 등록** (추출+LoFTR+매핑 합계 3,102초 ≈ 52분). SIFT 경로는 기존 제한 유지.
+2. **평면이 벽이 아니라 지면에 맞춰짐** — LoFTR는 건물 앞 지면도 촘촘히 삼각측량해서, 전체 점 SVD
+   법선이 [0,0,1](지면)이 됨 → 228m×310m 캔버스에 지면이 번진 결과(coverage 6.6%).
+   `_wall_normal_from_cameras`(rectification.py): 45°보다 비스듬히 보는 카메라들의 평균 시선 방향을
+   뒤집고 수평화한 것을 벽 법선으로 사용 → 58.6m×35m, e_u≈[-0.94,-0.34,0].
+3. **옥상 높이 사진이 벽 중간에 등록됨** — 반복 층 패턴 때문에 LoFTR/COLMAP이 옥상 촬영 25장을
+   17~19m 아래(몇 층 아래)에 붙임. 나머지는 GPS와 중앙값 0.26m 일치. 이 사진들의 하늘/옥상이 벽 중간에
+   구멍처럼 붙었음. `gps_inconsistent_images`: 정렬 후 카메라 위치가 자기 GPS와
+   max(3m, 중앙값×10) 이상 다르면 제외.
+
+### 현재 흐름 (`_run_colmap_only_pipeline`, COLMAP 1회 — 사용자 결정 유지)
+LoFTR→COLMAP(1회) → UTM 정렬 → 카메라 기반 벽 평면 → 벽 미노출(`_detect_off_wall_images`, 169장) +
+GPS 불일치(25장) 제외 → 재구성을 남은 사진으로 잘라 저장(`sparse/on_wall`) 후 재정렬/평면 재적합 →
+`rectify_and_blend` → **`{facade}_analysis_colmap.tif`만 저장**(visual/observed_mask/plain-name 복사본
+제거). 앱(`MainViewModel.RunScan`)도 `_analysis_colmap.tif`를 읽도록 변경.
+BACK 결과: 235장 사용, coverage 0.934, 5865×3756(V002 CheckCrackV2 262장/0.953과 비슷한 모양).
+
+### 기타
+- 사진 목록이 비면 중단 — `pycolmap.extract_features`는 빈 `image_names`를 "폴더 전체"로 취급해
+  `output/` 안의 옛 결과 이미지까지 재구성했음(9/28 실패 실행, 3장 등록).
+- 검증: COLMAP 단계는 새 코드로 실제 실행. 평면/제외/정사영상 단계는 저장된 `sparse/best`로
+  `_run_colmap_only_pipeline`을 COLMAP만 대체해서 실행(scratchpad 스크립트). 앱에서 처음부터 끝까지
+  한 번에 돌린 것은 아님. `dotnet build` 0 오류.
+- 남은 흠: 12층 부근 작은 검은 사각형 1개, 벽 위쪽에 옥상/배경이 붙음(V005도 위쪽 배경은 있음).
+- 커밋 안 함.
+
+### 2026-09-29 (계속) — 30분 안에: 사진 간격 솎기 + GPS prior → BACK 10.5분, 위층까지 전체
+- 시간 분해(429장): 추출 2분 + LoFTR 13분 + COLMAP 등록 31분 + 마무리 6분 + 정사영상 2분 ≈ 55분.
+- `image_stride: 2`(2장에 1장)는 **폐기**: 첫 실측(저장된 429장 매칭 재사용)은 좋았지만 앱 실행에서는
+  (1) 재구성이 비행 방향으로 휨(GPS 오차 중앙값 100m, 반복 시 7.4km) → 캔버스 폭주로 cv2 OOM(4.5GB),
+  (2) GPS prior로 휨을 잡아도 오르내리는 사진 43장이 17~19m(몇 층) 아래로 붙어 제외 → 위층 빠짐(0.64).
+  원인은 촬영 패턴: 세로 이동 중 사진 간격 ~5.5m, 위/아래 호버링에서는 거의 같은 자리 10장+.
+  2장에 1장은 호버 중복은 절반 남기고 상승 사진만 11m(3~4층) 간격으로 만듦.
+- 현재 설정:
+  - `colmap.min_photo_spacing_m: 1.5` — 촬영 순서대로, 직전에 남긴 사진과 3D GPS 거리 1.5m 미만이면 건너뜀
+    (`runner._thin_by_gps_spacing`). BACK 216/429장, 남은 사진 간 최대 6.2m.
+  - LoFTR 경로 매핑에 `use_prior_position=True`, robust loss (colmap_runner.py). prior 끄면 휨, 켜면 두 번
+    반복 모두 중앙값 0.56~0.61m. 엄격(non-robust)·공분산 1m 지정은 효과 차이 없음(43장 그대로).
+  - `fast_bundle_adjustment: false`(스위치만 추가, 전체 보정 횟수 줄임).
+  - 캔버스 > 4억 px(200m×200m)면 ValueError → runner가 "COLMAP 재구성 이상"으로 종료(OOM 대신).
+- **E2E 실측(stitch_folder.py, 앱과 같은 경로)**: 10.5분, 216장 전부 등록, GPS 불일치 14 + 벽 미노출 52 제외,
+  150장 사용, coverage 0.884, 1~13층 전체 + 옥상 경계까지 나옴.
+- 앱: 분석 시작 시 "진행 시간" 크게 표시(ScanElapsedText, 1초 갱신, 끝나면 총 시간 유지 + 상태줄에 표시).
+- 비교 파일: BACK/output/BACK_analysis_colmap_{claude_1705,test_fastba,test_half,test_half_fastba}.tif
+- **오른쪽 아래 모서리 누락 (사용자 지적: "이미지가 누락되면 안 됨")** — 그 모서리를 찍은 사진은
+  DJI_0436/0437/0442뿐이었는데 COLMAP이 몇 층 아래로 붙여 GPS 불일치로 제외 → 촬영했는데 빈 곳으로 보임
+  (커버리지 확인 툴에서 가장 위험한 오류). **원칙: 제외한 사진은 버리지 않고 빈 픽셀만 채운다.**
+  `runner._fill_gaps_from_excluded` + `rectification.fill_uncovered_pixels`: 메인 모자이크 뒤에 제외 사진
+  (벽 미노출 = COLMAP 자세 그대로, GPS 불일치 = COLMAP 회전 + **자기 GPS 위치**)을 투영해서
+  `observed_mask`가 0인 픽셀에만 붙임 (`rectify_images(pose_overrides=...)`). 이미 덮인 곳은 안 건드림.
+  BACK: 66장으로 288,773px 채움, coverage 0.884→0.896, 모서리/아래 가운데 빈칸 사라짐.
+  검증은 저장된 재구성으로 `_run_colmap_only_pipeline` 실행(COLMAP만 대체). 이전 결과는
+  `BACK_analysis_colmap_spacing_2245.tif`로 보관.
+- 남은 한계: `min_photo_spacing_m`로 건너뛴 사진(213장)은 COLMAP에 없어서 채우기에 못 씀 — 남긴 사진과
+  1.5m 안쪽이라 보통 같은 곳을 덮지만, 남긴 쪽이 등록 실패하면 빈 곳이 생길 수 있음.
