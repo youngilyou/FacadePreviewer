@@ -2133,3 +2133,15 @@ BACK 결과: 235장 사용, coverage 0.934, 5865×3756(V002 CheckCrackV2 262장/
   `BACK_analysis_colmap_spacing_2245.tif`로 보관.
 - 남은 한계: `min_photo_spacing_m`로 건너뛴 사진(213장)은 COLMAP에 없어서 채우기에 못 씀 — 남긴 사진과
   1.5m 안쪽이라 보통 같은 곳을 덮지만, 남긴 쪽이 등록 실패하면 빈 곳이 생길 수 있음.
+
+### 2026-09-29 (계속) — 다른 PC에서 받아서 돌아가게 (fresh clone + 빈 venv 실측 통과)
+- `tools/Setup-StitchEngine.ps1` 신규 (`Setup-Tools.bat` 4단계): `python`(PATH, 앱이 실행하는 그것)에
+  CUDA torch(nvidia-smi 있으면 cu126 index) → `requirements.txt` → LoFTR outdoor 가중치 미리 다운로드
+  (현장 노트북 오프라인 대비) → `stitch_engine/check_env.py`로 import/버전 확인. `-Python`, `-Cpu` 옵션.
+- **pycolmap은 4.2.0 고정**: 이 개발 PC의 4.3.0은 로컬 소스 빌드(2026-09-09 CUDA COLMAP)라 PyPI에 없음 —
+  fresh clone 테스트에서 설치 실패로 발견. 파이프라인은 4.2.0에서 E2E 확인함.
+- PowerShell 5.1이 `python -c "<여러 줄>"`의 따옴표를 지움 → import 체크를 `check_env.py` 파일로 분리.
+- 실측: scratchpad에 fresh clone + `python -m venv` → Setup-StitchEngine.ps1 통과(torch 2.14.0+cu126,
+  pycolmap 4.2.0, cv2 5.0.0, numpy 2.5.3) → `stitch_folder.py`로 BACK 88장 3분, 44/44 등록, coverage 0.94,
+  정상 이미지. 앱(`dotnet build`)도 fresh clone에서 오류 0. DDS용 네이티브 DLL은 기존대로
+  `Setup-Tools.bat` 1~3단계 + `FacadeDdsBridge\build.ps1` 필요(이번엔 재검증 안 함).
