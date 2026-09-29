@@ -4,8 +4,12 @@
 # base env observed on the dev machine; a venv works too).
 #
 # pycolmap (not a native colmap.exe vendored build) since 2026-08-22 -- see
-# CLAUDE.local.md's dated entry for that reversal. Version pinned to match
-# the main CheckCrack repo's own requirements.txt exactly.
+# CLAUDE.local.md's dated entry for that reversal.
+#
+# Install with tools\Setup-StitchEngine.ps1, not a bare `pip install -r`: on Windows a plain
+# `pip install torch` gets the CPU-only build, which makes LoFTR matching take hours instead of
+# ~5 minutes; the script installs the CUDA build first when an NVIDIA GPU is present, and also
+# downloads the LoFTR weights ahead of time (kornia otherwise fetches them on the first scan).
 
 torch>=2.1
 kornia>=0.7
@@ -16,5 +20,7 @@ pyyaml>=6.0
 scipy>=1.10
 networkx>=3.0
 pillow>=10.0
-pycolmap==4.1.1
+# 4.3.0: the COLMAP-only pipeline uses IncrementalPipelineOptions(use_prior_position=...),
+# Reconstruction.deregister_frame and Database pose priors, all tested on 4.3.0 (2026-09-29).
+pycolmap==4.3.0
 pyproj==3.7.2

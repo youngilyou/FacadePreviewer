@@ -17,6 +17,9 @@ REM                                   Win32 ssh.exe breaks the rsync protocol st
 REM                                   Cygwin-based rather than an MSVC build, and why it's kept
 REM                                   fully isolated from the MSVC/Visual Studio build)
 REM
+REM   4. stitch_engine Python      -> CUDA torch + requirements.txt + LoFTR weights, into the
+REM                                   `python` on PATH (Setup-StitchEngine.ps1)
+REM
 REM COLMAP is no longer a native vendored build here -- stitch_engine/src/sfm/colmap_runner.py
 REM now uses pycolmap (pip install -r tools/stitch_engine/requirements.txt) instead, matching
 REM the main CheckCrack repo's own pipeline. See tools/stitch_engine/README.md.
@@ -29,7 +32,7 @@ REM Usage: just double-click, or from a shell: tools\Setup-Tools.bat
 setlocal
 
 echo ============================================================
-echo [1/3] ExtraModule + FastDDSGen
+echo [1/4] ExtraModule + FastDDSGen
 echo ============================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Get-FastDdsGenModule.ps1"
 if errorlevel 1 (
@@ -41,7 +44,7 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo [2/3] libffmpeg ^(FFmpeg dev headers/libs/DLLs, for H.264 decode^)
+echo [2/4] libffmpeg ^(FFmpeg dev headers/libs/DLLs, for H.264 decode^)
 echo ============================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Get-FfmpegDevModule.ps1"
 if errorlevel 1 (
@@ -53,12 +56,24 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo [3/3] cygwin_rsync ^(rsync.exe + ssh.exe + runtime DLLs, for facade image transfer^)
+echo [3/4] cygwin_rsync ^(rsync.exe + ssh.exe + runtime DLLs, for facade image transfer^)
 echo ============================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Get-CygwinRsync.ps1"
 if errorlevel 1 (
     echo.
     echo Get-CygwinRsync.ps1 failed -- see above.
+    pause
+    exit /b 1
+)
+
+echo.
+echo ============================================================
+echo [4/4] stitch_engine Python packages ^(CUDA torch, pycolmap 4.3.0, LoFTR weights^)
+echo ============================================================
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0Setup-StitchEngine.ps1"
+if errorlevel 1 (
+    echo.
+    echo Setup-StitchEngine.ps1 failed -- see above.
     pause
     exit /b 1
 )

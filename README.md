@@ -33,7 +33,7 @@ cd tools
 .\Setup-Tools.bat
 ```
 
-Double-click works too. This runs three steps in order, each skipping work
+Double-click works too. This runs four steps in order, each skipping work
 that's already done on a re-run:
 
 1. **FastDDSGen** — the FastDDS SDK + fastddsgen Java runtime
@@ -44,12 +44,21 @@ that's already done on a re-run:
    rsync with Windows' native ssh.exe breaks the rsync protocol stream, so
    both must come from Cygwin) + runtime DLLs, for the high-resolution
    facade-image transfer feature.
+4. **stitch_engine Python** (`tools\Setup-StitchEngine.ps1`) — installs into
+   the `python` on `PATH` (the one the app launches for 분석 시작): the CUDA
+   build of torch when an NVIDIA GPU is present (a plain `pip install torch`
+   on Windows is CPU-only, and LoFTR matching then takes hours), then
+   `tools\stitch_engine\requirements.txt` (pycolmap **4.3.0**), then
+   downloads the LoFTR weights so the first scan works offline, and finally
+   checks every import. Needs Python 3.10+ (Miniconda is fine) on `PATH`
+   and internet access while it runs.
 
 See `tools\README.md` for what each script does and why, in more detail.
 
-COLMAP is no longer a native vendored build here — `pip install -r
-tools\stitch_engine\requirements.txt` now pulls in `pycolmap` instead, same
-as the main CheckCrack repo's own pipeline (see "Usage" below, step 4).
+COLMAP is no longer a native vendored build here — it comes from the
+`pycolmap` package step 4 installs. To (re)install only the Python part:
+`powershell -ExecutionPolicy Bypass -File tools\Setup-StitchEngine.ps1`
+(`-Python <path>` targets a different interpreter).
 
 ## Build
 
@@ -107,9 +116,11 @@ cd FacadePreviewer\bin\Debug\net9.0-windows
    folder — progress streams into the on-screen log box.
 5. **초기화** resets state to prepare for the next facade.
 
-Requires Python on `PATH` with `tools\stitch_engine\requirements.txt`
-installed for step 4 to work (not yet automated by `Setup-Tools.bat` — see
-that folder's own notes).
+Step 4 needs the Python setup from `Setup-Tools.bat` step 4 (the app runs
+`python` from `PATH`). An existing folder of photos (e.g. an SD card copy)
+can be analyzed with **기존 폴더 불러오기...** → **분석 시작**; the result is
+`<folder>\output\<name>_analysis_colmap.tif`. A 429-photo facade took about
+10–11 minutes on an RTX 4080 (see `CLAUDE.local.md`, 2026-09-29).
 
 ## High-resolution photo transfer (rsync-over-SSH)
 
