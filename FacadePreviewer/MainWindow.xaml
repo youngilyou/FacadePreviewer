@@ -355,16 +355,32 @@
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
-                                <Image x:Name="ResultImage" Source="{Binding ScanResultImage}" Stretch="Uniform"
-                                       RenderOptions.BitmapScalingMode="HighQuality" Margin="8"
-                                       RenderTransformOrigin="0.5,0.5">
-                                    <Image.RenderTransform>
+                                <!-- Result mosaic + optional 5m grid overlay (ScanGridOverlay, same aspect
+                                     ratio, so Stretch=Uniform puts both in the same box). The zoom/pan
+                                     transform sits on this shared parent so the grid moves with the image. -->
+                                <Grid Margin="8" RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
                                         <TransformGroup>
                                             <ScaleTransform x:Name="ResultImageScale" ScaleX="1" ScaleY="1"/>
                                             <TranslateTransform x:Name="ResultImageTranslate" X="0" Y="0"/>
                                         </TransformGroup>
-                                    </Image.RenderTransform>
-                                </Image>
+                                    </Grid.RenderTransform>
+                                    <Image x:Name="ResultImage" Source="{Binding ScanResultImage}" Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <Image Source="{Binding ScanGridOverlay}" Stretch="Uniform" IsHitTestVisible="False"
+                                           RenderOptions.BitmapScalingMode="HighQuality">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowScanGrid}" Value="False">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                </Grid>
                             </Grid>
                         </Grid>
                     </Grid>
@@ -380,7 +396,9 @@
                          these once at capture start). -->
                     <!-- capture root(캡처 저장 위치)도 같은 줄 오른쪽 빈 공간에 이어 붙인다
                          (별도 행 아님) -->
-                    <Grid Margin="0,0,0,10">
+                    <!-- 2026-09-30: 사용자 요청으로 숨김만 함(삭제 금지, 나중에 다시 쓸 수 있음).
+                         값은 그대로 저장/사용됨. 다시 보이려면 Visibility="Collapsed"만 지우면 됨. -->
+                    <Grid Margin="0,0,0,10" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
@@ -497,6 +515,12 @@
                                  captured frames without re-flying if the app was closed/crashed. -->
                             <Button Content="기존 폴더 불러오기..." Command="{Binding LoadExistingCaptureFolderCommand}" Margin="0,0,8,0"/>
                             <Button Content="분석 시작" Command="{Binding RunScanCommand}" Margin="0,0,8,0"/>
+                            <!-- Opens the shown result tif in the Windows image viewer (zoomable).
+                                 Enabled only while a result is shown (OpenScanResultCommand CanExecute). -->
+                            <Button Content="결과 열기" Command="{Binding OpenScanResultCommand}" Margin="0,0,8,0"/>
+                            <!-- Show/hide the 5m grid over the result (MainViewModel.ShowScanGrid). -->
+                            <CheckBox Content="그리드" IsChecked="{Binding ShowScanGrid}" IsEnabled="{Binding HasScanResult}"
+                                      VerticalAlignment="Center" Foreground="{StaticResource Text}" Margin="0,0,12,0"/>
                             <Button Content="초기화" Command="{Binding ResetCommand}" Margin="0,0,8,0"/>
                             <Button Content="고해상도 전송..." Click="OnOpenTransferSettings"/>
                         </StackPanel>

@@ -104,7 +104,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // HasScanResult). Cleared by StartCapture/Reset so a fresh capture doesn't keep showing a
     // stale previous facade's result.
     [ObservableProperty] private BitmapSource? _scanResultImage;
-    [ObservableProperty] private bool _hasScanResult;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenScanResultCommand))]
+    private bool _hasScanResult;
 
     // Populated after a successful scan from {facadeName}_unmatched_images.json (see
     // LoadUnmatchedImages) -- images the pipeline itself determined never contributed to the
@@ -451,6 +453,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         string dir = dialog.FolderName;
 
+        // Picking the capture folder's own "output" subfolder (where the result tif lives) is the
+        // natural thing to do when looking for a past result -- treat it as its parent capture
+        // folder (2026-09-30, user picked BACK\output and got "no jpg images").
+        if (string.Equals(Path.GetFileName(dir), "output", StringComparison.OrdinalIgnoreCase)
+            && Directory.GetFiles(dir, "*_analysis_colmap.tif").Length > 0
+            && Directory.GetParent(dir) is { } parentDir)
+        {
+            dir = parentDir.FullName;
+        }
+
         // 2026-09-28: was "frame_*.jpg" only (this app's own live-capture naming) -- broadened to
         // any .jpg/.jpeg so a folder of real SD-card photos (e.g. DJI_0023.JPG, no "frame_" prefix
         // at all) can be loaded too, not just this app's own captures. Windows file matching is
@@ -527,6 +539,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         });
         StatusMessage = $"불러옴 — {dir} ({CapturedFrames.Count}장, facade_id={recoveredFacadeName})";
+
+        // A folder analyzed earlier already has its result -- show it right away instead of
+        // requiring another full 분석 시작 just to look at it (2026-09-30).
+        string outputDir = Path.Combine(dir, "output");
+        string existingResult = Path.Combine(outputDir, $"{recoveredFacadeName}_analysis_colmap.tif");
+        if (File.Exists(existingResult) && LoadScanResultImage(existingResult, out _))
+        {
+            HasScanResult = true;
+            LoadUnmatchedImages(outputDir, recoveredFacadeName, dir);
+            StatusMessage += $" — 이전 분석 결과 표시 ({File.GetLastWriteTime(existingResult):yyyy-MM-dd HH:mm})";
+        }
     }
 
     // "스캔시작(스티칭->ColMap) 한번에 실행" -- runs previewer/tools/stitch_engine/stitch_folder.py
@@ -681,6 +704,90 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // OpenCvSharp.WpfExtensions.ToBitmapSource() for exactly this Mat->WPF-Image conversion
     // (see the deleted FacadeStitcher's own use of it) and OpenCvSharp's TIFF codec handles the
     // multi-page/large-canvas output stitch_folder.py produces more predictably than WIC's.
+    // Path of the result currently shown (set by LoadScanResultImage), for OpenScanResult.
+    private string? _scanResultPath;
+
+    // Grid drawn over the result (2026-09-30, user request) so a missed spot can be named by cell
+    // ("C4"). Built with the result's own aspect ratio so the overlay Image lines up with it.
+    [ObservableProperty] private BitmapSource? _scanGridOverlay;
+    [ObservableProperty] private bool _showScanGrid = true;
+    // stitch_engine renders the result at 100 px per meter of wall
+    // (rectification.facade_plane_from_reconstruction's px_per_m default).
+    private const double ResultPxPerMeter = 100.0;
+    private const double GridSpacingMeters = 5.0;
+
+    private static BitmapSource BuildGridOverlay(int resultWidth, int resultHeight)
+    {
+        // Drawn at a reduced size (same aspect ratio) -- a full-size BGRA overlay of a ~6000px
+        // result would be ~90MB for a few lines of text.
+        double scale = Math.Min(1.0, 2400.0 / Math.Max(resultWidth, resultHeight));
+        int w = Math.Max(1, (int)Math.Round(resultWidth * scale));
+        int h = Math.Max(1, (int)Math.Round(resultHeight * scale));
+        double step = GridSpacingMeters * ResultPxPerMeter * scale;
+
+        using var overlay = new Mat(h, w, MatType.CV_8UC4, Scalar.All(0));
+        var color = new Scalar(0, 230, 255, 220); // BGRA: yellow, mostly opaque
+        int thickness = Math.Max(1, (int)Math.Round(w / 1200.0));
+        int cols = (int)Math.Ceiling(w / step);
+        int rows = (int)Math.Ceiling(h / step);
+        for (int c = 0; c <= cols; c++)
+        {
+            int x = Math.Min(w - 1, (int)Math.Round(c * step));
+            Cv2.Line(overlay, new OpenCvSharp.Point(x, 0), new OpenCvSharp.Point(x, h - 1), color, thickness);
+        }
+        for (int r = 0; r <= rows; r++)
+        {
+            int y = Math.Min(h - 1, (int)Math.Round(r * step));
+            Cv2.Line(overlay, new OpenCvSharp.Point(0, y), new OpenCvSharp.Point(w - 1, y), color, thickness);
+        }
+
+        double fontScale = Math.Max(0.3, step / 180.0);
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
+            {
+                string label = GridColumnLabel(c) + (r + 1);
+                OpenCvSharp.Size size = Cv2.GetTextSize(label, HersheyFonts.HersheySimplex, fontScale, thickness, out _);
+                var origin = new OpenCvSharp.Point((int)Math.Round(c * step) + 4 * thickness,
+                                                   (int)Math.Round(r * step) + size.Height + 4 * thickness);
+                Cv2.PutText(overlay, label, origin, HersheyFonts.HersheySimplex, fontScale, color, thickness, LineTypes.AntiAlias);
+            }
+        }
+
+        BitmapSource bitmap = overlay.ToBitmapSource();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    // 0 -> A, 25 -> Z, 26 -> AA, ...
+    private static string GridColumnLabel(int index)
+    {
+        string label = "";
+        for (int i = index; i >= 0; i = i / 26 - 1)
+            label = (char)('A' + i % 26) + label;
+        return label;
+    }
+
+    // "결과 열기" (2026-09-30): opens the result tif in the Windows default image viewer, where it can
+    // be zoomed to check small missed spots -- the in-app view only fits the whole facade on screen.
+    [RelayCommand(CanExecute = nameof(HasScanResult))]
+    private void OpenScanResult()
+    {
+        if (_scanResultPath == null || !File.Exists(_scanResultPath))
+        {
+            StatusMessage = "열 결과 파일이 없습니다";
+            return;
+        }
+        try
+        {
+            Process.Start(new ProcessStartInfo(_scanResultPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"결과 열기 실패 — {ex.Message}";
+        }
+    }
+
     private bool LoadScanResultImage(string path, out string? error)
     {
         error = null;
@@ -700,6 +807,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             BitmapSource bitmap = mat.ToBitmapSource();
             bitmap.Freeze(); // cross-thread-safe + required before handing to the UI-bound property
             ScanResultImage = bitmap;
+            _scanResultPath = path;
+            ScanGridOverlay = BuildGridOverlay(mat.Width, mat.Height);
             return true;
         }
         catch (Exception ex)
