@@ -17,7 +17,8 @@ REM                                   Win32 ssh.exe breaks the rsync protocol st
 REM                                   Cygwin-based rather than an MSVC build, and why it's kept
 REM                                   fully isolated from the MSVC/Visual Studio build)
 REM
-REM   4. stitch_engine Python      -> CUDA torch + requirements.txt + LoFTR weights, into the
+REM   4. stitch_engine Python      -> Python 3.12 via winget if missing, then CUDA torch +
+REM                                   requirements.txt + LoFTR weights, into the
 REM                                   `python` on PATH (Setup-StitchEngine.ps1)
 REM
 REM COLMAP is no longer a native vendored build here -- stitch_engine/src/sfm/colmap_runner.py

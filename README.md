@@ -90,8 +90,10 @@ that's already done on a re-run:
    on Windows is CPU-only, and LoFTR matching then takes hours), then
    `tools\stitch_engine\requirements.txt` (pycolmap **4.2.0**), then
    downloads the LoFTR weights so the first scan works offline, and finally
-   checks every import. Needs Python 3.10+ (Miniconda is fine) on `PATH`
-   and internet access while it runs.
+   checks every import. Uses Python 3.10+ (Miniconda is fine) on `PATH`; if
+   there is none, it installs Python 3.12 with `winget install --id
+   Python.Python.3.12 -e` (added to the user PATH) first. Needs
+   internet access while it runs.
 
 See `tools\README.md` for what each script does and why, in more detail.
 
