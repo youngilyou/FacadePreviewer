@@ -22,11 +22,51 @@ git clone https://github.com/youngilyou/FacadePreviewer.git
 cd FacadePreviewer
 ```
 
+## GitHub CLI(gh) 설치 + 로그인 (Setup-Tools.bat 전에 1회)
+
+`Setup-Tools.bat` 1단계는 비공개 저장소 `youngilyou/Gen_IDL_DDS`에서, 2단계는
+GitHub 릴리스에서 `gh`로 파일을 받습니다. 그래서 `gh`가 없거나 로그인하지 않았으면
+`'gh' 용어가 ... 인식되지 않습니다` 또는 404로 멈춥니다.
+
+1. gh 설치:
+   ```powershell
+   winget install --id GitHub.cli -e
+   ```
+   설치 후 **PowerShell 창을 닫고 새 창**을 엽니다 (VS Code 터미널이면 VS Code를
+   완전히 껐다 켭니다). 설치 전에 열려 있던 창은 PATH가 갱신되지 않아 계속 `gh`를
+   못 찾습니다.
+
+2. 아래 한 줄만 입력하고 Enter:
+   ```powershell
+   gh auth login
+   ```
+   질문이 하나씩 나오면 **↑↓ 화살표로 고르고 Enter**를 누릅니다:
+
+   | 화면에 나오는 질문 | 고를 것 |
+   |---|---|
+   | Where do you use GitHub? | **GitHub.com** |
+   | What is your preferred protocol for Git operations on this host? | **HTTPS** |
+   | Authenticate Git with your GitHub credentials? | **Y** 입력 |
+   | How would you like to authenticate GitHub CLI? | **Login with a web browser** |
+
+3. `First copy your one-time code: XXXX-XXXX`가 나오면 코드를 적어두고 Enter를
+   누릅니다. 브라우저가 열리면 그 코드를 입력하고, Gen_IDL_DDS에 접근할 수 있는
+   GitHub 계정으로 승인합니다.
+
+4. 터미널에 `✓ Logged in as ...`가 나오면 로그인이 끝난 것입니다.
+
+5. 권한 확인:
+   ```powershell
+   gh api repos/youngilyou/Gen_IDL_DDS --jq .name
+   ```
+   `Gen_IDL_DDS`가 나오면 권한이 있는 것입니다. 404가 나오면 그 계정에 저장소
+   권한이 없는 것이니, 저장소 소유자(youngilyou)에게 collaborator 추가를 요청합니다.
+
 ## Install (native dependencies)
 
-**Prerequisites**: `git`, `cmake`, the `gh` CLI (run `gh auth login` once if
-`gh auth status` says you're not logged in), and Visual Studio 2022 with the
-C++ workload. `conda` is not required up front — see below.
+**Prerequisites**: `git`, `cmake`, the `gh` CLI (installed and logged in — see
+the section above), and Visual Studio 2022 with the C++ workload. `conda` is
+not required up front — see below.
 
 ```powershell
 cd tools
