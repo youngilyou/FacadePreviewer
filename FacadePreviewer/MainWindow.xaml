@@ -398,9 +398,9 @@
                          these once at capture start). -->
                     <!-- capture root(캡처 저장 위치)도 같은 줄 오른쪽 빈 공간에 이어 붙인다
                          (별도 행 아님) -->
-                    <!-- 2026-09-30: 사용자 요청으로 숨김만 함(삭제 금지, 나중에 다시 쓸 수 있음).
-                         값은 그대로 저장/사용됨. 다시 보이려면 Visibility="Collapsed"만 지우면 됨. -->
-                    <Grid Margin="0,0,0,10" Visibility="Collapsed">
+                    <!-- 2026-09-30에 사용자 요청으로 숨겼다가 2026-10-05에 다시 표시: 현장 노트북에서
+                         서버 주소/VPN 주소(LocalInterfaceIp)를 설정 파일 대신 화면에서 바로 고치기 위해. -->
+                    <Grid Margin="0,0,0,10">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
