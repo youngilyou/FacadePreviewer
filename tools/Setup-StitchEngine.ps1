@@ -82,7 +82,7 @@ if ($hasNvidia -and -not $Cpu) {
 Invoke-Checked "requirements.txt" { & $Python -m pip install -r $requirements }
 
 Invoke-Checked "LoFTR outdoor weights (pre-download)" {
-    & $Python -c "import kornia.feature as KF; KF.LoFTR(pretrained='outdoor'); print('LoFTR weights ready')"
+    & $Python (Join-Path $engineDir "fetch_loftr_weights.py")
 }
 
 Invoke-Checked "import check" { & $Python (Join-Path $engineDir "check_env.py") }
