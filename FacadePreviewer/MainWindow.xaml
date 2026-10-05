@@ -12,7 +12,9 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="200"/>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="220"/>
+            <!-- Auto: the 미매칭 이미지 border below carries its own Width="220" and is Collapsed
+                 until there's something to show, so the main area uses the full width until then. -->
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
         <!-- ===== 촬영 이미지 관리 (left sidebar) =====
@@ -552,11 +554,11 @@
              but failed to register there), not a guess based on how a photo looks (e.g. "it's
              tilted"). Same review-panel pattern as the left "촬영 이미지" sidebar: checkbox
              default checked, "제외" moves the checked ones into the capture folder's "excluded"
-             subfolder (never deletes) so a re-scan skips them. Column stays reserved even when
-             empty (HasUnmatchedImages only Collapses the border's content, not the column); this
-             is the simplest option, avoiding a width-collapsing converter for what's a rare,
-             small-count panel. -->
-        <Border Grid.Column="2" Margin="12,0,0,0" Padding="6">
+             subfolder (never deletes) so a re-scan skips them. 2026-10-05: the column is Auto and
+             the width lives on this border, so while it's Collapsed (no unmatched images yet) the
+             column takes no space and the main area widens; it appears at 220 when there's
+             something to show. -->
+        <Border Grid.Column="2" Width="220" Margin="12,0,0,0" Padding="6">
             <Border.Style>
                 <Style TargetType="Border" BasedOn="{StaticResource CardBorder}">
                     <Setter Property="Visibility" Value="Collapsed"/>
