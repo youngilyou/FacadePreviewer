@@ -2146,6 +2146,14 @@ BACK 결과: 235장 사용, coverage 0.934, 5865×3756(V002 CheckCrackV2 262장/
   정상 이미지. 앱(`dotnet build`)도 fresh clone에서 오류 0. DDS용 네이티브 DLL은 기존대로
   `Setup-Tools.bat` 1~3단계 + `FacadeDdsBridge\build.ps1` 필요(이번엔 재검증 안 함).
 
+### 2026-09-30 — 현장 운용 방식 확정 (사용자 결정)
+- 현장 분석은 **드론 SD카드 원본 사진만** 사용 (기존 폴더 불러오기 → 분석 시작). 앱의 실시간 DDS 캡처
+  (640x640, GPS 없음)는 **사용 안 함** — 그 경로는 오늘의 GPS 기반 개선(간격 솎기/GPS prior/빈 곳 채우기/5m 그리드)이
+  적용 안 되고 미검증이라, 다시 쓰게 되면 따로 검증 필요.
+- GPU 노트북은 과제 확정 시 구매(NVIDIA RTX 5060 이상/VRAM 8GB+, RAM 32GB 권장; CPU만이면 LoFTR 0.98s/쌍 vs GPU 0.058s/쌍,
+  BACK 216장 기준 분석 ~45분 vs ~10분 실측). 받으면 사무실에서 Setup-Tools.bat 전체(DDS DLL 빌드 포함) 리허설.
+- 실증 전 남은 확인: 실제 DJI 사진(GPS 고도 오차 수 m)으로 한 면 돌려서 min_photo_spacing_m(1.5)/GPS 불일치 임계(3m) 점검.
+
 ## 2026-10-05: 현장 노트북(MSI Thin 15, RTX 4050 6GB, 16GB, i7-13620H) 셋업 + 분석 시간 최적화
 
 **셋업 중 고친 것 (전부 커밋됨)**: Setup이 Python 없으면 winget으로 3.12 설치, LoFTR 가중치를
