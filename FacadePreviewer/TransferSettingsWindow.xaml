@@ -96,7 +96,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="수신 경로" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                <TextBox x:Name="RemoteRootTextBox" Text="/home/yiyou/ftpdatafolder" Grid.Column="1" Padding="6,4"
+                <TextBox x:Name="RemoteRootTextBox" Text="/home/yiyoudds/ftpdatafolder" Grid.Column="1" Padding="6,4"
                          Background="{StaticResource Surface2}" Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"/>
             </Grid>
 
