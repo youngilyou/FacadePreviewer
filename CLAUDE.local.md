@@ -2145,3 +2145,24 @@ BACK 결과: 235장 사용, coverage 0.934, 5865×3756(V002 CheckCrackV2 262장/
   pycolmap 4.2.0, cv2 5.0.0, numpy 2.5.3) → `stitch_folder.py`로 BACK 88장 3분, 44/44 등록, coverage 0.94,
   정상 이미지. 앱(`dotnet build`)도 fresh clone에서 오류 0. DDS용 네이티브 DLL은 기존대로
   `Setup-Tools.bat` 1~3단계 + `FacadeDdsBridge\build.ps1` 필요(이번엔 재검증 안 함).
+
+## 2026-10-05: 현장 노트북(MSI Thin 15, RTX 4050 6GB, 16GB, i7-13620H) 셋업 + 분석 시간 최적화
+
+**셋업 중 고친 것 (전부 커밋됨)**: Setup이 Python 없으면 winget으로 3.12 설치, LoFTR 가중치를
+kornia HF 저장소(`huggingface.co/kornia/loftr`)에서 받음(원본 cmp.felk.cvut.cz 타임아웃),
+`build.ps1`이 Debug+Release 둘 다 빌드 + VS 내장 cmake 폴백, **fastdds-3.6.dll이 OpenSSL
+(`libssl-3-x64.dll`/`libcrypto-3-x64.dll`)을 import하는데 복사 안 되고 있었음**(개발 PC는 PATH에
+다른 사본이 있어 우연히 동작) → csproj/CMake에서 FastDDS SDK bin에서 복사, 앱이 `tools\stitch_engine`
+을 고정 `..\..\..\..` 대신 상위로 올라가며 찾음(VS x64 출력은 `bin\x64\Release`로 한 단계 더 깊음).
+
+**FRONT(429장) 실측, 노트북**: 원래 39분 = SIFT 추출 ~11분(LoFTR 경로에선 결과를 버림, RAM 8.6GB로
+페이징) + LoFTR 2234쌍 ~11분(GPU, 0.24s/쌍, VRAM 최대 1.1GB) + COLMAP 매핑 14.6분(CPU, 거의
+단일스레드) + 정사영상 1.8분. SIFT를 640px/256개로 최소화(카메라/이미지/GPS prior 동일 확인) →
+**앱에서 22분**(전원 연결). **배터리만으로는 매핑이 ~3배 느려짐(64분)** — 현장은 AC 콘센트 있는
+파워스테이션 필수(이 노트북은 USB-C 충전 불가, 120W 원형 단자).
+
+**분석 모드(PC/노트북)**: UI 콤보박스 → `stitch_folder.py --profile pc|laptop` →
+`config/pipeline.yaml` / `pipeline.laptop.yaml`(`extends:` 상속, 덮어쓸 키만). 노트북 프로필은 현재
+**오버라이드 없음(=22분 기준)**. 시도 후 기각(전부 pipeline.laptop.yaml 주석에 기록): 키포인트 4096
+(매퍼가 모델 버리고 재시작 반복), fast BA, 사진 간격 2.0m(216→209장뿐), LoFTR FP16(1.08배),
+GPS 이웃 6개 상한(LoFTR -2.5분이지만 매핑이 더 느려져 29분+). 남은 병목은 COLMAP 매핑(CPU).
