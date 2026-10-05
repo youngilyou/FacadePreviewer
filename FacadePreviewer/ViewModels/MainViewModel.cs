@@ -147,6 +147,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _ddsRouterHost = "";
     [ObservableProperty] private int _ddsRouterPort = 14910;
     [ObservableProperty] private string _localInterfaceIp = "";
+    // 2026-10-05: DDS domain on screen (was hardcoded 30 here and 0 in TransferSettingsWindow).
+    // Used for video capture AND the transfer window's storage/analysis DDS, so both talk to the
+    // router's FacadePreviewerDomainParticipant. Changing it resets Port to that domain's default
+    // participant-0 metatraffic port (7400 + 250*domain + 10); Port can still be edited after.
+    [ObservableProperty] private int _ddsDomainId = 30;
+    partial void OnDdsDomainIdChanged(int value)
+    {
+        if (value >= 0 && value <= 232)
+            DdsRouterPort = 7400 + 250 * value + 10;
+    }
 
     // GenerateJson이 만든 Topic/Key/DRONE json(예: previewer/data/우리아파트.json) 하나를
     // "불러오기"로 읽어들인 결과 -- 예전 "수신 토픽" 콤보박스(config/dds_topics.json,
@@ -281,13 +291,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string videoTopic = LoadedAssignment.Topic;
         string sensorTopic = $"{LoadedAssignment.Topic}/sensor";
         string peerDesc = string.IsNullOrWhiteSpace(DdsRouterHost) ? "peer override 없음(env var 사용)" : $"peer {DdsRouterHost}:{DdsRouterPort}";
-        ConnectionStatusText = $"DDS 구독 시작됨 ({LoadedAssignment.Drone}, {videoTopic}, {peerDesc}) — 수신 대기 중";
+        ConnectionStatusText = $"DDS 구독 시작됨 ({LoadedAssignment.Drone}, {videoTopic}, domain {DdsDomainId}, {peerDesc}) — 수신 대기 중";
         IsConnected = true; // "subscribing" -- StartAsync doesn't report publisher-matched yet, see DdsFrameSubscriber
         // Domain 30 -- matches FacadePreviewerDomainParticipant in DDS-Router's
         // crack_inspection_analysis.yaml. Was hardcoded 0 (2026-09-28 fix): the real
         // RtmpVideoBridge for this DRONE01 stream publishes into the router on domain 30, so a
         // domain-0 participant here could never discover it regardless of topic/type correctness.
-        _dds.Start(30, sensorTopic, videoTopic, DdsRouterHost, DdsRouterPort, LocalInterfaceIp);
+        _dds.Start(DdsDomainId, sensorTopic, videoTopic, DdsRouterHost, DdsRouterPort, LocalInterfaceIp);
         return true;
     }
 
@@ -329,6 +339,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (!string.IsNullOrEmpty(saved.DdsRouterHost))
             DdsRouterHost = saved.DdsRouterHost;
+        // Domain before Port: setting the domain resets Port to its default, then a saved Port wins.
+        if (int.TryParse(saved.DdsDomainId, out var domain) && domain >= 0)
+            DdsDomainId = domain;
         if (int.TryParse(saved.DdsRouterPort, out var port) && port > 0)
             DdsRouterPort = port;
         if (!string.IsNullOrEmpty(saved.LocalInterfaceIp))
@@ -363,6 +376,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MainWindowSettingsStore.Save(_settingsPath, new MainWindowSettingsStore.MainWindowSettings(
             DdsRouterHost: DdsRouterHost,
             DdsRouterPort: DdsRouterPort.ToString(),
+            DdsDomainId: DdsDomainId.ToString(),
             LocalInterfaceIp: LocalInterfaceIp,
             CaptureRootPath: CaptureRootPath,
             MeasurementLocation: MeasurementLocation,

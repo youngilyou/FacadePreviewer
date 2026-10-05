@@ -69,12 +69,13 @@ public partial class TransferSettingsWindow : Window
         ["기타면"] = "OTHER",
     };
 
-    // Fixed project-wide DDS convention (domain 0, ROS2 rmw_fastrtps-style "rt/" topic prefix,
-    // matching every other bridge in this project -- DDS Monitor flagged facade_storage_*/
-    // facade_image_* as the only topics missing it) -- matches app_config.h's
-    // facade_image_domain_id/facade_storage_*_topic defaults on the MngData side exactly; not
-    // something this dialog needs its own settings for.
-    private const int DdsDomainId = 0;
+    // ROS2 rmw_fastrtps-style "rt/" topic prefix, matching every other bridge in this project and
+    // app_config.h's facade_storage_*_topic defaults on the MngData side.
+    // 2026-10-05: the domain is no longer a fixed 0 -- it comes from MainWindow's 도메인 field
+    // (_ddsDomainId, default 30). The DDS Router's crack_inspection_analysis.yaml routes these
+    // rt/facade_storage_* topics between FacadePreviewerDomainParticipant (domain 30) and MngData
+    // (domain 0); with this participant on domain 0 and an initial peer at domain 30's port
+    // (14910), nothing matched over VPN and the window sat at "저장 처리 대기 중".
     private const string FeedbackTopic = "rt/facade_storage_feedback";
     private const string ResultTopic = "rt/facade_storage_result";
     private const string CancelTopic = "rt/facade_storage_cancel_request";
@@ -107,6 +108,7 @@ public partial class TransferSettingsWindow : Window
 
     private readonly string _ddsHost;
     private readonly int _ddsPort;
+    private readonly int _ddsDomainId;
     private readonly string _ddsLocalInterface;
     private readonly string _contractId;
     private readonly string _customerName;
@@ -176,20 +178,21 @@ public partial class TransferSettingsWindow : Window
     /// loaded (or it predates this field) -- SendRequirements then declares no contract, same as
     /// before this existed.</param>
     public TransferSettingsWindow(string ddsHost, int ddsPort, string ddsLocalInterface,
-        string contractId = "", string customerName = "")
+        string contractId = "", string customerName = "", int ddsDomainId = 30)
     {
         InitializeComponent();
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
         _ddsHost = ddsHost;
         _ddsPort = ddsPort;
+        _ddsDomainId = ddsDomainId;
         _ddsLocalInterface = ddsLocalInterface;
         _contractId = contractId;
         _customerName = customerName;
 
-        // facade_analysis_msgs on domain 30 -- a different participant/domain from the domain-0
-        // one _storageStatus uses per-transfer, so it's started once here for the window's whole
-        // lifetime instead. initialPeerPort 0 lets the native side compute domain 30's own
-        // default port (7400+250*30+10) rather than reusing _ddsPort, which is domain 0's.
+        // facade_analysis_msgs on the same domain as _storageStatus (_ddsDomainId), but its own
+        // participant, started once here for the window's whole lifetime (_storageStatus is
+        // per-transfer). initialPeerPort 0 lets the native side compute the domain's own default
+        // port (7400+250*domain+10).
         _analysisCommand = new AnalysisCommandService();
         _analysisCommand.Dispatched += OnAnalysisDispatched;
         _analysisCommand.DispatchFailed += OnAnalysisDispatchFailed;
@@ -199,7 +202,7 @@ public partial class TransferSettingsWindow : Window
         _analysisCommand.StatusUpdate += OnAnalysisStatusUpdate;
         _analysisCommand.ErrorNotify += OnAnalysisErrorNotify;
         _analysisCommand.ResultReceived += OnAnalysisResult;
-        _analysisCommand.Start(domainId: 30, initialPeerHost: _ddsHost, localInterfaceIp: _ddsLocalInterface);
+        _analysisCommand.Start(domainId: _ddsDomainId, initialPeerHost: _ddsHost, localInterfaceIp: _ddsLocalInterface);
 
         // Default session id: today's date -- operator can change it, but this matches the
         // existing capture-folder naming convention (<측정장소>_yyyyMMdd_HHmmss) closely enough
@@ -600,7 +603,7 @@ public partial class TransferSettingsWindow : Window
         _storageStatus = new FacadeStorageStatusService();
         _storageStatus.FeedbackReceived += OnStorageFeedback;
         _storageStatus.ResultReceived += OnStorageResult;
-        if (!_storageStatus.Start(DdsDomainId, FeedbackTopic, ResultTopic, CancelTopic, RequirementsTopic, FinalizeTopic,
+        if (!_storageStatus.Start(_ddsDomainId, FeedbackTopic, ResultTopic, CancelTopic, RequirementsTopic, FinalizeTopic,
                 _ddsHost, _ddsPort, _ddsLocalInterface))
         {
             StatusText.Text = "저장 상태 DDS 연결 실패 -- 진행률/완료 알림 없이 계속 진행합니다.";

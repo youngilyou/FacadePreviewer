@@ -20,7 +20,9 @@ public static class MainWindowSettingsStore
         string MeasurementLocation,
         string SelectedBuilding,
         // "PC" or "노트북" -- which stitch_engine config profile 분석 시작 uses (see MainViewModel.AnalysisProfile).
-        string AnalysisProfile = "");
+        string AnalysisProfile = "",
+        // DDS domain id for capture + the transfer window's storage/analysis DDS (MainViewModel.DdsDomainId).
+        string DdsDomainId = "");
 
     // Never throws -- a missing/corrupt settings file just means the window falls back to its
     // existing default values, same as if this feature didn't exist.
@@ -52,7 +54,8 @@ public static class MainWindowSettingsStore
                 CaptureRootPath: Get("CaptureRootPath"),
                 MeasurementLocation: Get("MeasurementLocation"),
                 SelectedBuilding: Get("SelectedBuilding"),
-                AnalysisProfile: Get("AnalysisProfile"));
+                AnalysisProfile: Get("AnalysisProfile"),
+                DdsDomainId: Get("DdsDomainId"));
         }
         catch (IOException)
         {
@@ -84,6 +87,7 @@ public static class MainWindowSettingsStore
                 $"MeasurementLocation={settings.MeasurementLocation}",
                 $"SelectedBuilding={settings.SelectedBuilding}",
                 $"AnalysisProfile={settings.AnalysisProfile}",
+                $"DdsDomainId={settings.DdsDomainId}",
             };
             File.WriteAllLines(path, lines);
         }

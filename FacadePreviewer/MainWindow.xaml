@@ -412,6 +412,14 @@
                                      Width="130" Padding="6,4" Background="{StaticResource Surface2}"
                                      Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
                                      ToolTip="DDS-Router 장비 IP (비워두면 FACADE_DDS_INITIAL_PEER 환경변수 사용)"/>
+                            <!-- 2026-10-05: DDS 도메인 (MainViewModel.DdsDomainId, 기본 30). 바꾸면 Port가
+                                 그 도메인 기본값(7400+250*도메인+10)으로 자동 변경됨. -->
+                            <TextBlock Text="도메인" Foreground="{StaticResource Text2}" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="14,0,8,0"/>
+                            <TextBox Text="{Binding DdsDomainId, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="50" Padding="6,4" Background="{StaticResource Surface2}"
+                                     Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
+                                     ToolTip="DDS 도메인 ID (DDS-Router의 FacadePreviewer 참가자 도메인, 기본 30). 영상 수신과 고해상도 전송 저장 알림에 같이 쓰임"/>
                             <TextBlock Text="Port" Foreground="{StaticResource Text2}" FontSize="11.5"
                                        VerticalAlignment="Center" Margin="14,0,8,0"/>
                             <TextBox Text="{Binding DdsRouterPort, UpdateSourceTrigger=PropertyChanged}"
