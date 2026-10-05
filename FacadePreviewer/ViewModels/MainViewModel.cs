@@ -342,7 +342,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // overrides that default when the saved value is still valid for the freshly-loaded site.
         if (!string.IsNullOrEmpty(saved.SelectedBuilding) && Buildings.Contains(saved.SelectedBuilding))
             SelectedBuilding = saved.SelectedBuilding;
+        if (AnalysisProfiles.Contains(saved.AnalysisProfile))
+            AnalysisProfile = saved.AnalysisProfile;
     }
+
+    // 분석 모드: which stitch_engine config 분석 시작 runs with. "PC" = config/pipeline.yaml (RTX 4080
+    // desktop); "노트북" = config/pipeline.laptop.yaml (pipeline.yaml + speed overrides for the
+    // RTX 4050 / 16GB field laptop), passed as `stitch_folder.py --profile laptop`. Chosen by the
+    // operator, not auto-detected; saved right away so it sticks across restarts.
+    public IReadOnlyList<string> AnalysisProfiles { get; } = new[] { "PC", "노트북" };
+    [ObservableProperty] private string _analysisProfile = "PC";
+    partial void OnAnalysisProfileChanged(string value) => SaveCurrentSettings();
 
     // Saves whatever the operator currently has entered -- called once per 캡처 시작 click (see
     // StartCapture), regardless of whether that attempt then passes validation, so a not-yet-valid
@@ -356,7 +366,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LocalInterfaceIp: LocalInterfaceIp,
             CaptureRootPath: CaptureRootPath,
             MeasurementLocation: MeasurementLocation,
-            SelectedBuilding: SelectedBuilding ?? ""));
+            SelectedBuilding: SelectedBuilding ?? "",
+            AnalysisProfile: AnalysisProfile));
     }
 
     // "저장 폴더 위치의 경로는 바꿀 수 있게 버튼을 넣어 경로 설정 하게 하시요" -- native folder
@@ -631,6 +642,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         psi.ArgumentList.Add(scriptPath);
         psi.ArgumentList.Add(dir);
         psi.ArgumentList.Add(facadeName);
+        psi.ArgumentList.Add("--profile");
+        psi.ArgumentList.Add(AnalysisProfile == "노트북" ? "laptop" : "pc");
 
         try
         {

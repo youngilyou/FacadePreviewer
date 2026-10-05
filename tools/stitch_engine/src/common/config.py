@@ -36,7 +36,23 @@ class Config:
         return self._data
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(path: str | Path) -> Config:
+    """A file may start with `extends: <other.yaml>` (relative to itself) and then list only the
+    keys it changes -- e.g. config/pipeline.laptop.yaml on top of config/pipeline.yaml."""
+    path = Path(path)
     with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = yaml.safe_load(f) or {}
+    parent = data.pop("extends", None)
+    if parent:
+        data = _deep_merge(load_config(path.parent / parent).to_dict(), data)
     return Config(data)

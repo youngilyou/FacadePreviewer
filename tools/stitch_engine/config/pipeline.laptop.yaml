@@ -1,0 +1,7 @@
+# Field-laptop profile (FacadePreviewer "분석 모드: 노트북", stitch_folder.py --profile laptop).
+#
+# Everything comes from pipeline.yaml; this file lists only what the laptop changes, to cut the
+# analysis time on an RTX 4050 6GB / 16GB RAM / i7-13620H laptop. Each value is tuned by
+# re-running the same FRONT facade (429 photos) on AC power and comparing time + the result
+# image against the PC profile -- see CLAUDE.local.md (2026-10-05) for the measurements.
+extends: pipeline.yaml

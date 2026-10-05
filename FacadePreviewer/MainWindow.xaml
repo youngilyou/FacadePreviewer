@@ -516,6 +516,12 @@
                                  fresh timestamped folder, so this is the only way back into already-
                                  captured frames without re-flying if the app was closed/crashed. -->
                             <Button Content="기존 폴더 불러오기..." Command="{Binding LoadExistingCaptureFolderCommand}" Margin="0,0,8,0"/>
+                            <!-- 분석 모드 (MainViewModel.AnalysisProfile): PC / 노트북 config profile. -->
+                            <TextBlock Text="분석 모드" Foreground="{StaticResource Text2}" FontSize="11.5"
+                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox ItemsSource="{Binding AnalysisProfiles}" SelectedItem="{Binding AnalysisProfile}"
+                                      Width="80" Padding="6,4" Margin="0,0,8,0" VerticalAlignment="Center"
+                                      IsEnabled="{Binding IsScanning, Converter={StaticResource InverseBoolConverter}}"/>
                             <Button Content="분석 시작" Command="{Binding RunScanCommand}" Margin="0,0,8,0"/>
                             <!-- Opens the shown result tif in the Windows image viewer (zoomable).
                                  Enabled only while a result is shown (OpenScanResultCommand CanExecute). -->

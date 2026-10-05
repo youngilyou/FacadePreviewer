@@ -34,10 +34,26 @@ sys.path.insert(0, str(_ENGINE_ROOT))
 from src.pipeline.runner import run_facade_poc  # noqa: E402
 
 
+PROFILES = {
+    # Desktop PC (RTX 4080 class, 32GB+ RAM): config/pipeline.yaml as is.
+    "pc": "pipeline.yaml",
+    # Field laptop (RTX 4050 6GB, 16GB RAM): pipeline.yaml plus the speed overrides in this file.
+    "laptop": "pipeline.laptop.yaml",
+}
+
+
 def main() -> None:
     args = sys.argv[1:]
+    profile = "pc"
+    if "--profile" in args:
+        i = args.index("--profile")
+        if i + 1 >= len(args) or args[i + 1] not in PROFILES:
+            print(f"--profile must be one of: {', '.join(PROFILES)}")
+            sys.exit(1)
+        profile = args[i + 1]
+        del args[i:i + 2]
     if len(args) < 1:
-        print("usage: python stitch_folder.py <images_folder> [facade_name]")
+        print("usage: python stitch_folder.py <images_folder> [facade_name] [--profile pc|laptop]")
         sys.exit(1)
 
     images_dir = Path(args[0])
@@ -46,10 +62,10 @@ def main() -> None:
         sys.exit(1)
 
     facade_name = args[1] if len(args) > 1 else images_dir.name
-    config_path = _ENGINE_ROOT / "config" / "pipeline.yaml"
+    config_path = _ENGINE_ROOT / "config" / PROFILES[profile]
     output_dir = images_dir / "output"
 
-    print(f"stitching '{images_dir}' as facade '{facade_name}' ...")
+    print(f"stitching '{images_dir}' as facade '{facade_name}' (profile: {profile}, {config_path.name}) ...")
     out = run_facade_poc(
         facade_id=facade_name,
         images_dir=images_dir,

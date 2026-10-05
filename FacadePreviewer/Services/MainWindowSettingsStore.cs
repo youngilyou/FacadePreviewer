@@ -18,7 +18,9 @@ public static class MainWindowSettingsStore
         string LocalInterfaceIp,
         string CaptureRootPath,
         string MeasurementLocation,
-        string SelectedBuilding);
+        string SelectedBuilding,
+        // "PC" or "노트북" -- which stitch_engine config profile 분석 시작 uses (see MainViewModel.AnalysisProfile).
+        string AnalysisProfile = "");
 
     // Never throws -- a missing/corrupt settings file just means the window falls back to its
     // existing default values, same as if this feature didn't exist.
@@ -49,7 +51,8 @@ public static class MainWindowSettingsStore
                 LocalInterfaceIp: Get("LocalInterfaceIp"),
                 CaptureRootPath: Get("CaptureRootPath"),
                 MeasurementLocation: Get("MeasurementLocation"),
-                SelectedBuilding: Get("SelectedBuilding"));
+                SelectedBuilding: Get("SelectedBuilding"),
+                AnalysisProfile: Get("AnalysisProfile"));
         }
         catch (IOException)
         {
@@ -80,6 +83,7 @@ public static class MainWindowSettingsStore
                 $"CaptureRootPath={settings.CaptureRootPath}",
                 $"MeasurementLocation={settings.MeasurementLocation}",
                 $"SelectedBuilding={settings.SelectedBuilding}",
+                $"AnalysisProfile={settings.AnalysisProfile}",
             };
             File.WriteAllLines(path, lines);
         }
