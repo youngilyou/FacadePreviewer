@@ -46,6 +46,11 @@
     <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\fastdds-3.6.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\fastdds-3.6.dll')" />
     <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\fastcdr-2.3.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\fastcdr-2.3.dll')" />
     <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\foonathan_memory-0.7.4.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\foonathan_memory-0.7.4.dll')" />
+    <!-- 2026-10-05: fastdds-3.6.dll itself imports OpenSSL 3 (dumpbin /dependents). Without these
+         the app dies right after login with DllNotFoundException 'FacadeDdsBridge.dll or one of its
+         dependencies' on a fresh laptop; the dev machine only worked because other copies were on PATH. -->
+    <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\libssl-3-x64.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\libssl-3-x64.dll')" />
+    <None Include="..\tools\Module\FastDDSGen\FastDDS\bin\libcrypto-3-x64.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="Exists('..\tools\Module\FastDDSGen\FastDDS\bin\libcrypto-3-x64.dll')" />
   </ItemGroup>
 
   <!-- FFmpeg shared/dev build's runtime DLLs (libavcodec/libavutil/libswscale + libswresample,

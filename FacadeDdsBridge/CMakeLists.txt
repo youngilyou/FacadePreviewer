@@ -181,8 +181,12 @@ endforeach()
 # above) -- FacadePreviewer.csproj has its own separate copy of these for the WPF app's output
 # dir, but SmokeTest.exe (built here, run directly from build/$(Configuration)/) needs them
 # too.
+# libssl/libcrypto: fastdds-3.6.dll itself imports them (dumpbin /dependents), shipped in the
+# same SDK bin folder. Missing them only showed up on a fresh laptop (2026-10-05) -- the dev
+# machine had other copies on PATH.
 file(GLOB FASTDDS_RUNTIME_DLLS "${FASTDDS_ROOT}/bin/fastdds-*.dll" "${FASTDDS_ROOT}/bin/fastcdr-*.dll"
-    "${FASTDDS_ROOT}/bin/foonathan_memory-*.dll")
+    "${FASTDDS_ROOT}/bin/foonathan_memory-*.dll"
+    "${FASTDDS_ROOT}/bin/libssl-3-x64.dll" "${FASTDDS_ROOT}/bin/libcrypto-3-x64.dll")
 # fastdds-*/fastcdr-* globs above already exclude their debug variants naturally (the debug
 # filenames have an extra "d" before the dash: fastddsd-3.6.dll, fastcdrd-2.3.dll -- neither
 # matches a "fastdds-*"/"fastcdr-*" glob). foonathan_memory's debug variant shares the same
