@@ -313,11 +313,21 @@ def run_colmap(
         for stale in (base_db_path, Path(f"{base_db_path}-wal"), Path(f"{base_db_path}-shm")):
             if stale.exists():
                 stale.unlink()
+        # 2026-10-05: on the LoFTR path the SIFT keypoints/descriptors are thrown away
+        # (match_database_with_loftr clears them and writes LoFTR's own). extract_features is only
+        # here for the camera/image rows and the EXIF GPS pose priors it writes. Running full SIFT
+        # at 3200px on ~20MP photos for that took ~11 min of a 39-min run on a 16GB RTX 4050 laptop
+        # (and ~8.6GB of RAM, so it paged). A tiny, capped extraction writes the same rows/priors:
+        # camera intrinsics come from EXIF at the original resolution, not from this resize.
+        loftr_extraction_options = pycolmap.FeatureExtractionOptions(
+            num_threads=-1, max_image_size=640, use_gpu=False,
+        )
+        loftr_extraction_options.sift.max_num_features = 256
         pycolmap.extract_features(
             database_path=base_db_path,
             image_path=images_dir,
             image_names=image_filenames,
-            extraction_options=extraction_options,
+            extraction_options=loftr_extraction_options,
         )
         loftr_stats = match_database_with_loftr(
             database_path=base_db_path,
