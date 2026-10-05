@@ -301,6 +301,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    // 2026-10-05: one "DDS 연결 / DDS 중지" button (next to the HOST IP / 도메인 / Port row)
+    // replaces the DDS start/stop that used to be buried inside 캡처 시작/중지.
+    [RelayCommand]
+    private void ToggleDds()
+    {
+        if (IsConnected)
+        {
+            if (IsCapturing)
+                StopCapture();
+            _dds.Stop();
+            IsConnected = false;
+            ConnectionStatusText = "HOST 연결 안 됨";
+            StatusMessage = "DDS 연결 중지됨";
+            return;
+        }
+        SaveCurrentSettings();
+        if (TryEnsureDdsRegistered())
+            StatusMessage = $"DDS 연결됨 — domain {DdsDomainId}, {DdsRouterHost}:{DdsRouterPort}";
+    }
+
     // 생성자에서 앱 시작 시 한 번만 호출된다(재로드 버튼은 제거됨 -- 사용자 요청: "불러오기
     // 버튼 제거", 이제 동/측정장소는 보통 "촬영지역 설정 불러오기..."의 assignment json이
     // 갈아치우므로 이 버튼의 존재 이유였던 수동 재로드 시나리오가 옅어짐). 이 앱은 배포당
@@ -404,8 +424,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (IsCapturing)
             return;
         SaveCurrentSettings();
-        if (!TryEnsureDdsRegistered())
-            return; // TryEnsureDdsRegistered already set StatusMessage
+        // 2026-10-05: DDS 연결은 이제 별도 "DDS 연결/중지" 버튼(ToggleDds)이 담당 -- 캡처는
+        // 이미 들어오고 있는 프레임을 저장만 한다(연결 안 돼 있으면 저장될 프레임이 없을 뿐).
         if (string.IsNullOrWhiteSpace(SelectedBuilding))
         {
             StatusMessage = "동을 선택하세요";
@@ -445,12 +465,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CapturedFrameCountDisplay = 0;
         CaptureFolderText = dir;
 
-        // DDS 구독 자체는 바로 위 TryEnsureDdsRegistered()가 시작해 놓았다 -- 여기서부터는 그
-        // 위에서 흘러들어오는 프레임을 디스크에 저장하는 것만 담당(IsCapturing이
-        // OnDecodedFrameReceived 안에서 저장 여부를 가르는 게이트, _dds.Start 자체는 다시
-        // 호출하지 않음).
+        // IsCapturing is the gate OnDecodedFrameReceived checks before saving a frame; the DDS
+        // subscription itself is started/stopped only by ToggleDds.
         IsCapturing = true;
-        StatusMessage = $"캡처 중 — {dir}";
+        StatusMessage = IsConnected ? $"캡처 중 — {dir}" : $"캡처 중 — {dir} (DDS 연결 안 됨: 저장될 프레임 없음)";
     }
 
     [RelayCommand]
@@ -458,10 +476,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (!IsCapturing)
             return;
-        _dds.Stop();
-        IsCapturing = false;
-        IsConnected = false;
-        ConnectionStatusText = "HOST 연결 안 됨";
+        IsCapturing = false; // DDS stays connected -- only ToggleDds disconnects it
         StatusMessage = $"캡처 중지됨 — {_capturedFrameCount}장 저장됨";
 
         // Catch-up call: mops up whatever tail of frames landed since the last periodic

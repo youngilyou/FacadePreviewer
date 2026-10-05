@@ -435,15 +435,29 @@
                                      Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
                                      ToolTip="이 PC에서 DDS 통신에 사용할 NIC IP (가상 어댑터가 여러 개일 때만 필요, 비워두면 자동)"/>
 
+                            <!-- 2026-10-05: 사용자 요청으로 캡처 저장 위치/찾아보기 숨김(삭제 아님, 값은 그대로 저장/사용). -->
                             <TextBlock Text="캡처 저장 위치" Foreground="{StaticResource Text2}" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="20,0,8,0"/>
-                            <TextBox Text="{Binding CaptureRootPath, UpdateSourceTrigger=PropertyChanged}"
+                                       VerticalAlignment="Center" Margin="20,0,8,0" Visibility="Collapsed"/>
+                            <TextBox Text="{Binding CaptureRootPath, UpdateSourceTrigger=PropertyChanged}" Visibility="Collapsed"
                                      Width="260" Padding="6,4" Background="{StaticResource Surface2}"
                                      Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
                                      ToolTip="측정장소_날짜시간 폴더가 이 경로 아래 생성됩니다 (예: 외장 드라이브로 변경 가능)"
                                      IsEnabled="{Binding IsCapturing, Converter={StaticResource InverseBoolConverter}}"/>
-                            <Button Content="찾아보기..." Command="{Binding BrowseCaptureRootCommand}" Margin="8,0,0,0"
+                            <Button Content="찾아보기..." Command="{Binding BrowseCaptureRootCommand}" Margin="8,0,0,0" Visibility="Collapsed"
                                     IsEnabled="{Binding IsCapturing, Converter={StaticResource InverseBoolConverter}}"/>
+                            <!-- 2026-10-05: DDS 연결/중지 한 버튼 (MainViewModel.ToggleDds). -->
+                            <Button Command="{Binding ToggleDdsCommand}" Margin="14,0,0,0" MinWidth="90">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Setter Property="Content" Value="DDS 연결"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                <Setter Property="Content" Value="DDS 중지"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </StackPanel>
                     </Grid>
 
@@ -519,8 +533,9 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button Content="캡처 시작" Command="{Binding StartCaptureCommand}" Margin="0,0,8,0"/>
-                            <Button Content="캡처 중지" Command="{Binding StopCaptureCommand}" Margin="0,0,8,0"/>
+                            <!-- 2026-10-05: 사용자 요청으로 숨김(삭제 아님). DDS 연결/중지는 HOST IP 행의 버튼으로 옮김. -->
+                            <Button Content="캡처 시작" Command="{Binding StartCaptureCommand}" Margin="0,0,8,0" Visibility="Collapsed"/>
+                            <Button Content="캡처 중지" Command="{Binding StopCaptureCommand}" Margin="0,0,8,0" Visibility="Collapsed"/>
                             <!-- Points 분석 시작/커버리지 미리보기 at a folder from a past session (see
                                  MainViewModel.LoadExistingCaptureFolder). StartCapture always makes a
                                  fresh timestamped folder, so this is the only way back into already-
