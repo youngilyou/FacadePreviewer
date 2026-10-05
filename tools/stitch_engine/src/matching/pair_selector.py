@@ -150,8 +150,28 @@ def select_pairs(catalog: list[ImageMetadata], cfg: Config) -> list[PairCandidat
     # 2) spatial proximity via KD-tree (skips images without GPS), 3D (horizontal + altitude)
     if tree is not None:
         neighbor_pairs = tree.query_pairs(r=max_gps_m)
-        for i, j in neighbor_pairs:
-            add(located[i], located[j], "gps_proximity")
+        # matching.max_gps_neighbors_per_image (optional): nearest-first, keep a GPS pair only while
+        # at least one of its two photos still has fewer than this many GPS pairs. Inside the radius
+        # most pairs re-match the same wall (FRONT: 1380 GPS pairs, ~13 per photo); 6 per photo kept
+        # all 216 photos connected through >=100-inlier pairs with 30% fewer pairs (2234 -> 1575),
+        # i.e. 30% less LoFTR time.
+        cap = int(mcfg.max_gps_neighbors_per_image) if "max_gps_neighbors_per_image" in mcfg else 0
+        if cap > 0:
+            def dist(ij):
+                return float(np.linalg.norm(xyz[ij[0]] - xyz[ij[1]]))
+            gps_count: dict[str, int] = {}
+            for i, j in sorted(neighbor_pairs, key=dist):
+                a, b = located[i], located[j]
+                if gps_count.get(a.image_id, 0) >= cap and gps_count.get(b.image_id, 0) >= cap:
+                    continue
+                before = len(pairs)
+                add(a, b, "gps_proximity")
+                if len(pairs) > before:
+                    gps_count[a.image_id] = gps_count.get(a.image_id, 0) + 1
+                    gps_count[b.image_id] = gps_count.get(b.image_id, 0) + 1
+        else:
+            for i, j in neighbor_pairs:
+                add(located[i], located[j], "gps_proximity")
 
     return list(pairs.values())
 

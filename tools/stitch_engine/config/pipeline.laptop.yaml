@@ -4,4 +4,18 @@
 # analysis time on an RTX 4050 6GB / 16GB RAM / i7-13620H laptop. Each value is tuned by
 # re-running the same FRONT facade (429 photos) on AC power and comparing time + the result
 # image against the PC profile -- see CLAUDE.local.md (2026-10-05) for the measurements.
+#
+# Tried and rejected (FRONT, 2026-10-05):
+#   - colmap.max_keypoints_per_image 4096: the mapper kept discarding and restarting models
+#     (379 registrations for 216 photos after 9 min) -- stopped.
+#   - colmap.fast_bundle_adjustment: mapping still not done after 2 h (ran while another scan
+#     shared the CPU, so not conclusive) -- not used.
+#   - colmap.min_photo_spacing_m 2.0: 216 -> 209 photos only (vertical moves are already 4-6 m
+#     apart), not worth it.
+#   - LoFTR in FP16: 1.08x faster, match counts up to 18% different -- not used.
+#   - matching.max_gps_neighbors_per_image 6 (2234 -> 1575 pairs): LoFTR 9.3 -> 6.8 min, but the
+#     mapper got slower (still at 187/216 after 29 min total) -- stopped.
+#
+# Baseline to beat: this profile with no overrides (= pipeline.yaml, after the tiny-SIFT-extraction
+# fix in colmap_runner.py) took 22 min on FRONT in the app, AC power.
 extends: pipeline.yaml
