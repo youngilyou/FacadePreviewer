@@ -418,9 +418,11 @@
                                      Width="70" Padding="6,4" Background="{StaticResource Surface2}"
                                      Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
                                      ToolTip="DDS 디스커버리 포트 (기본 7410 = domain 0, participant 0)"/>
+                            <!-- 2026-10-05: 사용자 요청으로 로컬 인터페이스 IP만 숨김(비워두면 자동). 다시
+                                 보이려면 아래 두 요소의 Visibility="Collapsed"만 지우면 됨. -->
                             <TextBlock Text="로컬 인터페이스 IP (선택)" Foreground="{StaticResource Text2}" FontSize="11.5"
-                                       VerticalAlignment="Center" Margin="14,0,8,0"/>
-                            <TextBox Text="{Binding LocalInterfaceIp, UpdateSourceTrigger=PropertyChanged}"
+                                       VerticalAlignment="Center" Margin="14,0,8,0" Visibility="Collapsed"/>
+                            <TextBox Text="{Binding LocalInterfaceIp, UpdateSourceTrigger=PropertyChanged}" Visibility="Collapsed"
                                      Width="130" Padding="6,4" Background="{StaticResource Surface2}"
                                      Foreground="{StaticResource Text}" BorderBrush="{StaticResource Border}"
                                      ToolTip="이 PC에서 DDS 통신에 사용할 NIC IP (가상 어댑터가 여러 개일 때만 필요, 비워두면 자동)"/>
