@@ -323,6 +323,9 @@ def run_colmap(
             num_threads=-1, max_image_size=640, use_gpu=False,
         )
         loftr_extraction_options.sift.max_num_features = 256
+        if logger:
+            log_event(logger, "info", "CM 사진 정보 읽는 중", stage="COLMAP_EXTRACT",
+                      facade_id=facade_id, image_count=len(image_filenames))
         pycolmap.extract_features(
             database_path=base_db_path,
             image_path=images_dir,
@@ -338,6 +341,10 @@ def run_colmap(
             matcher=matcher,
             workspace_dir=workspace_dir,
             logger=logger,
+            # colmap.max_keypoints_per_image (default 8192): fewer keypoints per photo means fewer
+            # 3D points, so a smaller (faster) bundle adjustment in the mapper.
+            max_keypoints_per_image=int(cfg.colmap.max_keypoints_per_image)
+            if "max_keypoints_per_image" in cfg.colmap else 8192,
         )
         if logger:
             log_event(

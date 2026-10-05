@@ -218,7 +218,14 @@ def match_database_with_loftr(
         "pairs_timed_out": 0, "pairs_failed": 0,
     }
 
-    for pc in pairs:
+    for pair_index, pc in enumerate(pairs):
+        # Progress for FacadePreviewer's progress bar (MainViewModel.TryUpdateScanProgress), every
+        # 20 pairs so the log isn't flooded (~2000 pairs per facade).
+        if logger and pair_index % 20 == 0:
+            log_event(
+                logger, "info", "LoFTR 매칭 중", stage="COLMAP_LOFTR_PROGRESS",
+                progress=f"{pair_index}/{len(pairs)}",
+            )
         meta_a = by_id_meta.get(pc.image_a)
         meta_b = by_id_meta.get(pc.image_b)
         if meta_a is None or meta_b is None:

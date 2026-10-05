@@ -602,6 +602,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         IsScanning = true;
         IsShowingSelectedFrame = false;
+        // Hide the previous result (e.g. the one 기존 폴더 불러오기 shows) so the live log is visible
+        // while this run works; the new result replaces it when the scan finishes.
+        ScanResultImage = null;
+        HasScanResult = false;
+        HasUnmatchedImages = false;
         ScanLogText = "";
         _scanLogLines.Clear();
         ScanElapsedText = "";
@@ -1024,21 +1029,61 @@ public partial class MainViewModel : ObservableObject, IDisposable
             double progressFraction = 0;
             if (progressText != null)
             {
-                var parts = progressText.Split('/');
+                // COLMAP_MAPPING_PROGRESS sends "~85/216" (approximate) -- strip the "~".
+                var parts = progressText.TrimStart('~').Split('/');
                 if (parts.Length == 2 && double.TryParse(parts[0], out double done) && double.TryParse(parts[1], out double total) && total > 0)
-                    progressFraction = done / total;
+                    progressFraction = Math.Min(1.0, done / total);
+            }
+
+            // 2026-10-05: the COLMAP-only path (colmap.mode: always, what 분석 시작 runs now) emits
+            // its own stages; only the old H-chain stages were mapped, so the bar sat at
+            // "5% -- 이미지 메타데이터 읽는 중" for the whole run. Percent ranges follow the measured
+            // laptop timing on FRONT: extract ~1.5 min, LoFTR ~9, mapping ~11-15, mosaic ~2.
+            double? colmapPercent = stage switch
+            {
+                "PHOTO_SPACING" => 3,
+                "COLMAP_EXTRACT" => 4,
+                "COLMAP_LOFTR_PROGRESS" => 8 + progressFraction * 37,
+                "COLMAP_MAPPING" => 45,
+                "COLMAP_MAPPING_PROGRESS" => 45 + progressFraction * 45,
+                "COLMAP_ONLY" => 90,
+                "GPS_MISMATCH_DETECTED" or "OFF_WALL_DETECTED" => 92,
+                "GAP_FILL" => 97,
+                _ => null,
+            };
+            string? colmapLabel = stage switch
+            {
+                "PHOTO_SPACING" => "겹치는 사진 정리 중",
+                "COLMAP_EXTRACT" => "사진 정보 읽는 중",
+                "COLMAP_LOFTR_MATCH" or "COLMAP_LOFTR_PROGRESS" => $"사진 매칭 중 (GPU){(progressText != null ? $" {progressText}" : "")}",
+                "COLMAP_MAPPING" or "COLMAP_MAPPING_ATTEMPT" => "카메라 위치 계산 중",
+                "COLMAP_MAPPING_PROGRESS" => $"카메라 위치 계산 중 ({progressText})",
+                "COLMAP_ONLY" or "GPS_MISMATCH_DETECTED" or "OFF_WALL_DETECTED" => "벽면 정사영상 만드는 중",
+                "GAP_FILL" => "빈 곳 채우는 중",
+                _ => null,
+            };
+            if (colmapLabel != null)
+            {
+                Application.Current.Dispatcher.BeginInvoke(() =>
+                {
+                    // never move backwards (e.g. "~218/216" overshoot, repeated MATCH events)
+                    if (colmapPercent is double cp && cp > ScanProgressPercent)
+                        ScanProgressPercent = cp;
+                    ScanStageText = colmapLabel;
+                });
+                return;
             }
 
             double? percent = stage switch
             {
-                "METADATA_PARSED" => 5,
+                "METADATA_PARSED" => 2,
                 "PAIR_GRAPH_BUILT" => 10,
                 "MATCH_GEOMETRY" => 10 + progressFraction * 55,
                 "GEOMETRY_SOLVED" => 65,
                 "PREVIEW_UPDATED" => 65 + progressFraction * 20,
                 "STITCHED" => 85,
                 "COLMAP_FALLBACK" => 92,
-                "RECTIFIED_COLMAP" => 96,
+                "RECTIFIED_COLMAP" => 98,
                 "DONE" => 100,
                 _ => null, // NEEDS_MANUAL_REVIEW/FAILED_GEOMETRY/etc: keep whatever percent we're already at
             };
