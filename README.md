@@ -111,7 +111,7 @@ stitching helpers)**:
 
 ```powershell
 cd FacadeDdsBridge
-.\build.ps1                # Debug (default)
+.\build.ps1                # Debug + Release (default)
 .\build.ps1 -Config Release
 ```
 
