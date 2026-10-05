@@ -160,7 +160,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // WPF's underlying IFileDialog/shell-item resolution) throws ArgumentException on an
     // unresolved path containing literal ".." components (confirmed: crashed the whole app the
     // first time this was tried without GetFullPath).
-    private readonly string _assignmentDefaultDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "data"));
+    private readonly string _assignmentDefaultDir = FindUpward("data") ?? Path.Combine(AppContext.BaseDirectory, "data");
+
+    // Looks for <relativePath> next to the exe, then in each parent folder. A fixed "..\..\..\.."
+    // only matched bin\<Config>\net9.0-windows; Visual Studio's x64 platform builds to
+    // bin\x64\<Config>\net9.0-windows, one level deeper, and the scan then couldn't find
+    // tools\stitch_engine (2026-10-05). Also covers an installed copy with tools\ beside the exe.
+    // Returns a full path (no ".." segments, which OpenFileDialog's InitialDirectory rejects).
+    private static string? FindUpward(string relativePath)
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+        {
+            string candidate = Path.Combine(dir.FullName, relativePath);
+            if (File.Exists(candidate) || Directory.Exists(candidate))
+                return candidate;
+        }
+        return null;
+    }
 
     // 촬영현장(회사/단지)/동/측정장소(방향) 그룹 -- 같은 config/facade_targets.json을
     // TransferSettingsWindow와 공유(FacadeTargetCatalog), 이 앱은 배포당 하나의 현장만 다루므로
@@ -582,9 +598,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ScanStageText = "시작 중...";
         StatusMessage = "스캔 시작 — 스티칭 + CM 파이프라인 실행 중...";
 
-        string engineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "stitch_engine");
-        if (!File.Exists(Path.Combine(engineDir, "stitch_folder.py")))
-            engineDir = Path.Combine(AppContext.BaseDirectory, "tools", "stitch_engine"); // published-copy fallback
+        string engineDir = FindUpward(Path.Combine("tools", "stitch_engine", "stitch_folder.py")) is { } found
+            ? Path.GetDirectoryName(found)!
+            : Path.Combine(AppContext.BaseDirectory, "tools", "stitch_engine");
         string scriptPath = Path.Combine(engineDir, "stitch_folder.py");
         // StartCapture의 폴더명 조합(동+방향)과 반드시 동일해야 stitch_folder.py의
         // <facade_name>_analysis.tif 등 출력 파일명이 실제 캡처 폴더명과 일치한다.
@@ -1164,9 +1180,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         string facadeName = _loadedFacadeNameOverride
             ?? SanitizeForFolderName($"{SelectedBuilding}_{MeasurementLocation}");
         string workspaceDir = Path.Combine(capturedDir, "output", $"{facadeName}_colmap");
-        string engineDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "stitch_engine");
-        if (!File.Exists(Path.Combine(engineDir, "incremental_extract.py")))
-            engineDir = Path.Combine(AppContext.BaseDirectory, "tools", "stitch_engine"); // published-copy fallback
+        string engineDir = FindUpward(Path.Combine("tools", "stitch_engine", "incremental_extract.py")) is { } found
+            ? Path.GetDirectoryName(found)!
+            : Path.Combine(AppContext.BaseDirectory, "tools", "stitch_engine");
         string scriptPath = Path.Combine(engineDir, "incremental_extract.py");
         if (!File.Exists(scriptPath))
         {
