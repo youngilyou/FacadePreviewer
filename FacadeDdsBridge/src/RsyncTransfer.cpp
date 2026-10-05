@@ -174,7 +174,12 @@ bool ParseProgress2Line(const std::string& line, uint64_t& bytes, int& percent, 
 // sshpass without ever appearing on any command line (visible in Task Manager/ps otherwise).
 // Returns empty when password is empty (caller should pass nullptr to CreateProcessW in that
 // case, i.e. plain inherited environment, no SSHPASS entry at all).
-std::vector<wchar_t> BuildEnvironmentWithSshPass(const std::wstring& password)
+// askpass_cygpath (2026-10-05): when non-empty, also sets SSH_ASKPASS=<it>,
+// SSH_ASKPASS_REQUIRE=force and DISPLAY so ssh asks tools\ssh_askpass.cmd (which prints SSHPASS)
+// instead of going through sshpass. sshpass runs ssh inside a pseudo-terminal, and on Windows 11
+// that opened a visible Windows Terminal window in front of the transfer window; ssh + askpass
+// under CREATE_NO_WINDOW opens none (checked on the field laptop).
+std::vector<wchar_t> BuildEnvironmentWithSshPass(const std::wstring& password, const std::wstring& askpass_cygpath)
 {
     std::vector<wchar_t> block;
     if (password.empty())
@@ -194,9 +199,18 @@ std::vector<wchar_t> BuildEnvironmentWithSshPass(const std::wstring& password)
     }
     FreeEnvironmentStringsW(current_env);
 
-    const std::wstring entry = L"SSHPASS=" + password;
-    block.insert(block.end(), entry.begin(), entry.end());
-    block.push_back(L'\0');
+    std::vector<std::wstring> entries{L"SSHPASS=" + password};
+    if (!askpass_cygpath.empty())
+    {
+        entries.push_back(L"SSH_ASKPASS=" + askpass_cygpath);
+        entries.push_back(L"SSH_ASKPASS_REQUIRE=force");
+        entries.push_back(L"DISPLAY=none");
+    }
+    for (const std::wstring& entry : entries)
+    {
+        block.insert(block.end(), entry.begin(), entry.end());
+        block.push_back(L'\0');
+    }
     block.push_back(L'\0'); // final extra null terminates the whole block
 
     return block;
@@ -239,9 +253,14 @@ bool RsyncTransfer::Start(
     // RsyncTransfer.h's Start() doc comment) -- only fall back to sshpass-wrapped password auth
     // when no key path was given at all.
     const bool use_password_auth = ssh_key_path.empty() && !ssh_password.empty();
+    // 2026-10-05: the password goes through SSH_ASKPASS (tools\ssh_askpass.cmd, copied next to
+    // rsync.exe) when that helper is present -- no sshpass, so no terminal window. sshpass stays
+    // as the fallback for an output folder without the helper.
+    const std::wstring askpass_path = rsync_dir + L"ssh_askpass.cmd";
+    const bool use_askpass = use_password_auth && GetFileAttributesW(askpass_path.c_str()) != INVALID_FILE_ATTRIBUTES;
 
     std::ostringstream ssh_cmd;
-    if (use_password_auth)
+    if (use_password_auth && !use_askpass)
     {
         // sshpass -e reads the password from the SSHPASS env var (set on this child process's
         // own environment below, see BuildEnvironmentWithSshPass) rather than a command-line
@@ -318,7 +337,9 @@ bool RsyncTransfer::Start(
     // Only build/pass a custom environment block when password auth actually needs SSHPASS in
     // it -- CreateProcessW's own nullptr default (inherit this process's environment verbatim)
     // is exactly the pre-existing, already-correct behavior for key-based/no-auth-override runs.
-    const std::vector<wchar_t> env_block = use_password_auth ? BuildEnvironmentWithSshPass(ssh_password) : std::vector<wchar_t>{};
+    const std::vector<wchar_t> env_block = use_password_auth
+        ? BuildEnvironmentWithSshPass(ssh_password, use_askpass ? Utf8ToWide(ToCygdrivePath(askpass_path)) : std::wstring{})
+        : std::vector<wchar_t>{};
     LPVOID env_ptr = env_block.empty() ? nullptr : (LPVOID)env_block.data();
     DWORD creation_flags = CREATE_NO_WINDOW;
     if (env_ptr != nullptr)

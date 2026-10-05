@@ -76,6 +76,10 @@
     <CygwinRsyncFile Include="..\tools\cygwin_rsync\bin\*" />
     <None Include="@(CygwinRsyncFile)" CopyToOutputDirectory="PreserveNewest" Visible="false"
           Link="cygwin_rsync\bin\%(Filename)%(Extension)" />
+    <!-- 2026-10-05: SSH_ASKPASS helper for password login (replaces sshpass.exe, which opened a
+         visible terminal window). Tracked in git, unlike the downloaded cygwin_rsync\bin. -->
+    <None Include="..\tools\ssh_askpass.cmd" CopyToOutputDirectory="PreserveNewest" Visible="false"
+          Link="cygwin_rsync\bin\ssh_askpass.cmd" />
   </ItemGroup>
 
   <!-- Local company/building name catalog (see Services/FacadeTargetCatalog.cs). PreserveNewest

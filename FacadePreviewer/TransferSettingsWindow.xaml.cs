@@ -864,16 +864,27 @@ public partial class TransferSettingsWindow : Window
         // Start()) -- only fall back to sshpass-wrapped password auth when no key was given.
         var usePasswordAuth = string.IsNullOrEmpty(sshKeyPath) && !string.IsNullOrEmpty(sshPassword);
         var sshpassExePath = Path.Combine(rsyncDir, "sshpass.exe");
+        // 2026-10-05: password via SSH_ASKPASS (ssh_askpass.cmd next to ssh.exe) when present --
+        // sshpass opened a visible terminal window on Windows 11 (see RsyncTransfer.cpp).
+        var askpassPath = Path.Combine(rsyncDir, "ssh_askpass.cmd");
+        var useAskpass = usePasswordAuth && File.Exists(askpassPath);
 
         var psi = new ProcessStartInfo
         {
-            FileName = usePasswordAuth ? sshpassExePath : sshExePath,
+            FileName = usePasswordAuth && !useAskpass ? sshpassExePath : sshExePath,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true,
         };
-        if (usePasswordAuth)
+        if (useAskpass)
+        {
+            psi.EnvironmentVariables["SSHPASS"] = sshPassword;
+            psi.EnvironmentVariables["SSH_ASKPASS"] = ToCygdrivePath(askpassPath);
+            psi.EnvironmentVariables["SSH_ASKPASS_REQUIRE"] = "force";
+            psi.EnvironmentVariables["DISPLAY"] = "none";
+        }
+        else if (usePasswordAuth)
         {
             if (!File.Exists(sshpassExePath))
                 return result;
