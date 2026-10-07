@@ -211,8 +211,7 @@ public partial class MainWindow : Window
         // TransferSettingsWindow's SendRequirements can tag them even though its own 회사/동
         // dropdowns come from a separate list (config/facade_targets.json).
         var window = new TransferSettingsWindow(vm?.DdsRouterHost ?? "", vm?.DdsRouterPort ?? 7410, vm?.LocalInterfaceIp ?? "",
-            vm?.LoadedAssignment?.ContractId ?? "", vm?.LoadedAssignment?.CustomerName ?? "",
-            vm?.DdsDomainId ?? 30)
+            vm?.LoadedAssignment, vm?.DdsDomainId ?? 30)
             { Owner = this };
         window.Show();
     }

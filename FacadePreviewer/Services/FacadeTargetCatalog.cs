@@ -54,6 +54,30 @@ public sealed class FacadeTargetCatalog
         }
     }
 
+    /// <summary>2026-10-07: the transfer window's 회사/동 lists now come only from the loaded
+    /// 촬영지역 설정 file (GenerateJson output) -- one company (the contract's building name) with
+    /// that file's 동 list. Empty catalog when no file is loaded or it carries no building name.</summary>
+    public static FacadeTargetCatalog FromAssignment(ApartmentAssignment? assignment)
+    {
+        if (assignment == null || string.IsNullOrWhiteSpace(assignment.BuildingName) || assignment.Buildings.Count == 0)
+            return new FacadeTargetCatalog(Array.Empty<FacadeTargetCompany>());
+        return new FacadeTargetCatalog(new[]
+        {
+            new FacadeTargetCompany { Name = assignment.BuildingName.Trim(), Buildings = assignment.Buildings.Distinct().ToList() },
+        });
+    }
+
+    /// <summary>"1000동" / " 1000 " -> "1000": the 동 number exactly as SmartCrackWeb's MySQL stores
+    /// it (RequestTargets.DongNo) -- what MngData's archive `building` must carry so the analysis
+    /// results can be matched back to the contract. Display keeps the "동" suffix.</summary>
+    public static string NormalizeDongNo(string? value)
+    {
+        var v = (value ?? "").Trim();
+        if (v.EndsWith("동"))
+            v = v[..^1].TrimEnd();
+        return v;
+    }
+
     private sealed class CatalogDto
     {
         [JsonPropertyName("companies")] public List<FacadeTargetCompany>? Companies { get; set; }

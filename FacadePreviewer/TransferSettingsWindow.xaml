@@ -102,7 +102,7 @@
 
             <TextBlock Text="CrackVisionDB 연동 (자동 동 단위 zip 묶음) -- DDS로 방향 세트 등록, 별도 로그인 불필요" Style="{StaticResource Kicker}" Margin="0,4,0,8" TextWrapping="Wrap"/>
 
-            <TextBlock Text="분류 (회사/동/방향/세션) -- 아래 두 목록은 config\facade_targets.json에 미리 등록된 값 중에서만 선택합니다 (오타 방지, 직접 입력 불가)" Style="{StaticResource Kicker}" Margin="0,4,0,8" TextWrapping="Wrap"/>
+            <TextBlock Text="분류 (회사/동/방향/세션) -- 회사/동은 메인 화면에서 불러온 촬영지역 설정 파일(GenerateJson 확정본) 기준입니다 (직접 입력 불가)" Style="{StaticResource Kicker}" Margin="0,4,0,8" TextWrapping="Wrap"/>
 
             <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
@@ -122,6 +122,7 @@
                 <TextBlock Text="동/주소" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
                 <ComboBox x:Name="BuildingComboBox" Grid.Column="1" IsEditable="False"/>
             </Grid>
+            <TextBlock x:Name="ContractInfoText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="90,0,0,6"/>
             <TextBlock x:Name="CatalogWarningText" Foreground="#E0A030" TextWrapping="Wrap" Margin="0,0,0,6" Visibility="Collapsed"/>
 
             <Grid Margin="0,0,0,6">

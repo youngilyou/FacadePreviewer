@@ -178,7 +178,7 @@ public partial class TransferSettingsWindow : Window
     /// loaded (or it predates this field) -- SendRequirements then declares no contract, same as
     /// before this existed.</param>
     public TransferSettingsWindow(string ddsHost, int ddsPort, string ddsLocalInterface,
-        string contractId = "", string customerName = "", int ddsDomainId = 30)
+        ApartmentAssignment? assignment, int ddsDomainId = 30)
     {
         InitializeComponent();
         SourceInitialized += (_, _) => DarkTitleBar.Apply(this);
@@ -186,8 +186,8 @@ public partial class TransferSettingsWindow : Window
         _ddsPort = ddsPort;
         _ddsDomainId = ddsDomainId;
         _ddsLocalInterface = ddsLocalInterface;
-        _contractId = contractId;
-        _customerName = customerName;
+        _contractId = assignment?.ContractId?.Trim() ?? "";
+        _customerName = assignment?.CustomerName?.Trim() ?? "";
 
         // facade_analysis_msgs on the same domain as _storageStatus (_ddsDomainId), but its own
         // participant, started once here for the window's whole lifetime (_storageStatus is
@@ -211,18 +211,30 @@ public partial class TransferSettingsWindow : Window
         // is already the more useful "fresh per launch" behavior.
         SessionIdTextBox.Text = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-        var configPath = Path.Combine(AppContext.BaseDirectory, "config", "facade_targets.json");
-        var catalog = FacadeTargetCatalog.Load(configPath);
+        // 2026-10-07 (사용자 지시): config/facade_targets.json은 더 이상 쓰지 않는다 -- 회사/동/계약은
+        // 메인 화면에서 불러온 촬영지역 설정 파일(GenerateJson 확정본)만 기준으로 한다. 그 파일이
+        // 없거나 계약 번호/건물명/동 목록이 없으면 팝업으로 알리고 전송을 막는다(계약에 연결되지 않은
+        // 사진은 검사 결과를 고객 화면(SmartCrackWeb)에 연결할 방법이 없음).
+        var catalog = FacadeTargetCatalog.FromAssignment(assignment);
         CompanyComboBox.ItemsSource = catalog.Companies;
-        if (catalog.Companies.Count > 0)
+        var missing = assignment == null ? "촬영지역 설정 파일이 불러와지지 않았습니다."
+            : string.IsNullOrWhiteSpace(_contractId) ? "촬영지역 설정 파일에 계약 번호(ContractId)가 없습니다."
+            : catalog.Companies.Count == 0 ? "촬영지역 설정 파일에 건물명/동 목록이 없습니다."
+            : null;
+        if (missing == null)
         {
             CompanyComboBox.SelectedIndex = 0;
+            ContractInfoText.Text = $"계약 {_contractId}" + (string.IsNullOrEmpty(_customerName) ? "" : $" · {_customerName}")
+                + (string.IsNullOrEmpty(assignment!.RequestNo) ? "" : $" · 신청 {assignment.RequestNo}");
         }
         else
         {
-            CatalogWarningText.Text = $"등록된 회사/동 목록이 없습니다: {configPath}\n이 파일을 편집(회사/동 이름 추가)한 뒤 앱을 다시 시작하세요.";
+            var guide = missing + "\n\nGenerateJson에서 신청 건을 선택하고 \"확정\"으로 만든 파일을 메인 화면의 "
+                + "촬영지역 설정 불러오기로 먼저 불러온 뒤 이 창을 다시 여세요. (예전 파일은 계약 정보가 없어 다시 만들어야 합니다.)";
+            CatalogWarningText.Text = guide;
             CatalogWarningText.Visibility = Visibility.Visible;
             TransferButton.IsEnabled = false;
+            Loaded += (_, _) => MessageBox.Show(this, guide, "촬영지역 설정 없음", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
 
@@ -480,11 +492,13 @@ public partial class TransferSettingsWindow : Window
 
         if (selectedCompany == null || string.IsNullOrEmpty(selectedBuilding))
         {
-            StatusText.Text = "회사와 동을 목록에서 선택하세요 (config\\facade_targets.json 참고).";
+            StatusText.Text = "회사와 동을 목록에서 선택하세요 (촬영지역 설정 파일 기준).";
             return;
         }
         var company = selectedCompany.Name;
-        var building = selectedBuilding;
+        // MySQL과 같은 동 번호("1000")로 보낸다 -- 목록에는 "1000동"으로 보이지만, 분석 결과를
+        // 계약(SmartCrackWeb)에 연결하는 키는 숫자 그대로다.
+        var building = FacadeTargetCatalog.NormalizeDongNo(selectedBuilding);
 
         if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(sshUser) || string.IsNullOrEmpty(localFolder) ||
             string.IsNullOrEmpty(sessionId))

@@ -29,6 +29,15 @@ public sealed class ApartmentAssignment
     [JsonPropertyName("ContractId")] public string ContractId { get; set; } = "";
     [JsonPropertyName("CustomerName")] public string CustomerName { get; set; } = "";
 
+    // 2026-10-07 (Version 2, GenerateJson이 확정 시 MySQL에서 조회해 채움): 전송 창의 회사/동 목록과
+    // 계약 연결은 이제 이 파일만 기준으로 한다(config/facade_targets.json 사용 중지). 구버전 파일엔 없음.
+    [JsonPropertyName("Version")] public int Version { get; set; }
+    [JsonPropertyName("RequestNo")] public string RequestNo { get; set; } = "";
+    [JsonPropertyName("BuildingName")] public string BuildingName { get; set; } = "";
+    [JsonPropertyName("Address")] public string Address { get; set; } = "";
+    [JsonPropertyName("ContractStart")] public string ContractStart { get; set; } = "";
+    [JsonPropertyName("ContractEnd")] public string ContractEnd { get; set; } = "";
+
     /// <summary>실패 시 null(파일 없음/손상 -- 다른 로더들과 동일한 "절대 throw 안 함" 관례).
     /// Topic이 비어 있으면 구독할 게 없는 것과 마찬가지라 역시 null로 취급.</summary>
     public static ApartmentAssignment? Load(string path)
