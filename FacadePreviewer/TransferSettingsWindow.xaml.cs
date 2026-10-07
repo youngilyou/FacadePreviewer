@@ -111,6 +111,7 @@ public partial class TransferSettingsWindow : Window
     private readonly int _ddsDomainId;
     private readonly string _ddsLocalInterface;
     private readonly string _contractId;
+    private readonly ApartmentAssignment? _assignment;
     private readonly string _customerName;
 
     private RsyncTransferService? _transfer;
@@ -186,6 +187,7 @@ public partial class TransferSettingsWindow : Window
         _ddsPort = ddsPort;
         _ddsDomainId = ddsDomainId;
         _ddsLocalInterface = ddsLocalInterface;
+        _assignment = assignment;
         _contractId = assignment?.ContractId?.Trim() ?? "";
         _customerName = assignment?.CustomerName?.Trim() ?? "";
 
@@ -417,8 +419,36 @@ public partial class TransferSettingsWindow : Window
         }
     }
 
+    private static readonly Dictionary<string, string> FaceLabels = new()
+    {
+        ["East"] = "동면", ["West"] = "서면", ["South"] = "남면", ["North"] = "북면",
+    };
+
+    /// <summary>2026-10-07: 고른 동 + 방향이 신청서의 어느 면인지(GenerateJson이 정한 연결) 보여준다.
+    /// 현장에서 틀린 걸 발견하면 GenerateJson이나 SmartCrackWeb 관리 화면(촬영 면 연결)에서 고친다.</summary>
+    private void UpdateFaceMapText()
+    {
+        if (FaceMapText == null || BuildingComboBox == null || DirectionComboBox == null)
+            return;
+        var dong = FacadeTargetCatalog.NormalizeDongNo(BuildingComboBox.SelectedItem as string);
+        var dir = (DirectionComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Content?.ToString()?.Split(' ')[0] ?? "";
+        if (string.IsNullOrEmpty(dong) || string.IsNullOrEmpty(dir) || _assignment == null)
+        {
+            FaceMapText.Text = "";
+            return;
+        }
+        var entry = _assignment.FaceMap.FirstOrDefault(m =>
+            FacadeTargetCatalog.NormalizeDongNo(m.DongNo) == dong && string.Equals(m.Direction, dir, StringComparison.OrdinalIgnoreCase));
+        FaceMapText.Text = entry != null && FaceLabels.TryGetValue(entry.Face, out var label)
+            ? $"→ 신청서 면: {dong}동 {label}"
+            : $"→ 신청서 면 연결 없음 ({dong}동 {dir}) — GenerateJson 또는 SmartCrackWeb 관리 화면에서 지정해야 균열이 고객 화면에 연결됩니다";
+    }
+
+    private void OnBuildingSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateFaceMapText();
+
     private void OnDirectionSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
+        UpdateFaceMapText();
         // DirectionComboBox's SelectedIndex="0" in XAML fires this DURING InitializeComponent
         // (its default state differs from index 0, unlike e.g. a CheckBox left at its own default),
         // before later-declared fields like BatchModeCheckBox are assigned yet -- confirmed via a

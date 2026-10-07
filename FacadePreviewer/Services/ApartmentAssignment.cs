@@ -9,6 +9,13 @@ namespace FacadePreviewer.Services;
 /// 토픽 문자열(예: "rt/FacadeImage/DRONE01", GenerateJson 쪽에서 조립됨), Key는 화면 표시용
 /// 현장 식별자(DDS 레벨에서는 쓰이지 않음), Drone은 어느 드론이 배정됐는지 보여주기 위한
 /// 정보. 이 파일 하나가 예전 "수신 토픽" 콤보박스(config/dds_topics.json)를 대체한다.</summary>
+public sealed class FaceMapEntry
+{
+    [JsonPropertyName("DongNo")] public string DongNo { get; set; } = "";
+    [JsonPropertyName("Direction")] public string Direction { get; set; } = "";
+    [JsonPropertyName("Face")] public string Face { get; set; } = "";
+}
+
 public sealed class ApartmentAssignment
 {
     [JsonPropertyName("Topic")] public string Topic { get; set; } = "";
@@ -37,6 +44,10 @@ public sealed class ApartmentAssignment
     [JsonPropertyName("Address")] public string Address { get; set; } = "";
     [JsonPropertyName("ContractStart")] public string ContractStart { get; set; } = "";
     [JsonPropertyName("ContractEnd")] public string ContractEnd { get; set; } = "";
+
+    // 2026-10-07: 촬영 면(FRONT/BACK/LEFT/RIGHT) -> 신청서 면(East/West/South/North) 연결 -- GenerateJson이
+    // 동별로 사람이 정한 값. 전송 창에서 "-> 남면"처럼 보여주기만 한다(실제 연결은 SmartCrackWeb 표가 기준).
+    [JsonPropertyName("FaceMap")] public List<FaceMapEntry> FaceMap { get; set; } = new();
 
     /// <summary>실패 시 null(파일 없음/손상 -- 다른 로더들과 동일한 "절대 throw 안 함" 관례).
     /// Topic이 비어 있으면 구독할 게 없는 것과 마찬가지라 역시 null로 취급.</summary>

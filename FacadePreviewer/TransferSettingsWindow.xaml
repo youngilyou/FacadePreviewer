@@ -120,7 +120,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="동/주소" Foreground="{StaticResource Text2}" VerticalAlignment="Center"/>
-                <ComboBox x:Name="BuildingComboBox" Grid.Column="1" IsEditable="False"/>
+                <ComboBox x:Name="BuildingComboBox" Grid.Column="1" IsEditable="False" SelectionChanged="OnBuildingSelectionChanged"/>
             </Grid>
             <TextBlock x:Name="ContractInfoText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="90,0,0,6"/>
             <TextBlock x:Name="CatalogWarningText" Foreground="#E0A030" TextWrapping="Wrap" Margin="0,0,0,6" Visibility="Collapsed"/>
@@ -140,6 +140,7 @@
                     <ComboBoxItem Content="OTHER (기타)"/>
                 </ComboBox>
             </Grid>
+            <TextBlock x:Name="FaceMapText" Foreground="{StaticResource Text2}" TextWrapping="Wrap" Margin="90,0,0,6"/>
 
             <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
