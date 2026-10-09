@@ -419,9 +419,16 @@ public partial class TransferSettingsWindow : Window
         }
     }
 
+    // 2026-10-09: SmartCrackWeb WallFace는 건물 기준 상대 방향(Labels.cs) -- East=정면, West=후면, South=좌측면, North=우측면.
     private static readonly Dictionary<string, string> FaceLabels = new()
     {
-        ["East"] = "동면", ["West"] = "서면", ["South"] = "남면", ["North"] = "북면",
+        ["East"] = "정면", ["West"] = "후면", ["South"] = "좌측면", ["North"] = "우측면",
+    };
+
+    // 표준 대응(SmartCrackWeb Labels.DirectionToFace): 연결 표에 예외가 없으면 이 면에 붙는다.
+    private static readonly Dictionary<string, string> StandardFace = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["FRONT"] = "정면", ["BACK"] = "후면", ["LEFT"] = "좌측면", ["RIGHT"] = "우측면",
     };
 
     /// <summary>2026-10-07: 고른 동 + 방향이 신청서의 어느 면인지(GenerateJson이 정한 연결) 보여준다.
@@ -440,8 +447,10 @@ public partial class TransferSettingsWindow : Window
         var entry = _assignment.FaceMap.FirstOrDefault(m =>
             FacadeTargetCatalog.NormalizeDongNo(m.DongNo) == dong && string.Equals(m.Direction, dir, StringComparison.OrdinalIgnoreCase));
         FaceMapText.Text = entry != null && FaceLabels.TryGetValue(entry.Face, out var label)
-            ? $"→ 신청서 면: {dong}동 {label}"
-            : $"→ 신청서 면 연결 없음 ({dong}동 {dir}) — GenerateJson 또는 SmartCrackWeb 관리 화면에서 지정해야 균열이 고객 화면에 연결됩니다";
+            ? $"→ 신청서 면: {dong}동 {label} (예외 지정)"
+            : StandardFace.TryGetValue(dir, out var standard)
+                ? $"→ 신청서 면: {dong}동 {standard}"
+                : $"→ 신청서 면 표준 대응 없음 ({dong}동 {dir}) — 신청 면이 하나뿐이면 그 면에, 아니면 GenerateJson 또는 SmartCrackWeb 관리 화면에서 지정해야 균열이 연결됩니다";
     }
 
     private void OnBuildingSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateFaceMapText();
